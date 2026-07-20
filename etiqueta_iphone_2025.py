@@ -452,8 +452,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Configuración Inicial
         self.title(f"Generador de Etiquetas iPhone v{VERSION}")
-        self.geometry("860x520")
-        self.minsize(860, 520)
+        self.geometry("900x560")  # Slightly wider/higher for comfortable margins
+        self.minsize(900, 560)
+        self.configure(fg_color="#0F172A")  # Slate-900 Main Window
         
         limpiar_archivos_antiguos()
         cargar_config_inicial()
@@ -464,12 +465,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Crear Frames
-        self.controls_frame = customtkinter.CTkFrame(self, width=300, corner_radius=0)
+        self.controls_frame = customtkinter.CTkFrame(self, width=320, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
         self.controls_frame.grid(row=0, column=0, sticky="nsw")
-        self.controls_frame.grid_rowconfigure(2, weight=1)
+        self.controls_frame.grid_rowconfigure(3, weight=1)  # Bottom spacer row
 
-        self.preview_frame = customtkinter.CTkFrame(self)
-        self.preview_frame.grid(row=0, column=1, padx=20, pady=20, sticky="nsew")
+        self.preview_frame = customtkinter.CTkFrame(self, fg_color="#1E293B", corner_radius=16, border_width=1, border_color="#334155")
+        self.preview_frame.grid(row=0, column=1, padx=25, pady=25, sticky="nsew")
 
         self._setup_ui()
         self._bind_events()
@@ -486,53 +487,239 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_path_inicial = cargar_logo_config()
         self.logo_path_var = tk.StringVar(value=logo_path_inicial)
         
-        # Widgets de Entrada
-        main_controls_frame = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
-        main_controls_frame.grid(row=0, column=0, padx=20, pady=20, sticky="ew")
-        main_controls_frame.grid_columnconfigure(0, weight=1)
+        # 1. Banner de Encabezado (Logo & Versión)
+        header_frame = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
+        header_frame.grid(row=0, column=0, padx=25, pady=(25, 10), sticky="ew")
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        title_container = customtkinter.CTkFrame(header_frame, fg_color="transparent")
+        title_container.grid(row=0, column=0, sticky="w")
+        
+        title_label = customtkinter.CTkLabel(
+            title_container, 
+            text="EtiquetaPro", 
+            font=customtkinter.CTkFont(family="Inter", size=24, weight="bold"),
+            text_color="#06B6D4"  # Cyan Accent
+        )
+        title_label.grid(row=0, column=0, sticky="w")
+        
+        version_badge = customtkinter.CTkLabel(
+            title_container, 
+            text=f"v{VERSION}", 
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#94A3B8",
+            fg_color="#334155",
+            corner_radius=6,
+            height=18,
+            width=40
+        )
+        version_badge.grid(row=0, column=1, padx=(8, 0), sticky="w")
+        
+        subtitle_label = customtkinter.CTkLabel(
+            header_frame, 
+            text="Generador de Etiquetas de iPhone", 
+            font=customtkinter.CTkFont(family="Inter", size=12),
+            text_color="#94A3B8"
+        )
+        subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
-        customtkinter.CTkLabel(main_controls_frame, text="Modelo:", font=customtkinter.CTkFont(weight="bold")).grid(row=0, column=0, padx=0, pady=(0,2), sticky="w")
-        modelo_entry_frame = customtkinter.CTkFrame(main_controls_frame, fg_color="transparent")
-        modelo_entry_frame.grid(row=1, column=0, padx=0, pady=(0,10), sticky="ew")
+        # 2. Contenedor de Entradas (Cards)
+        inputs_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
+        inputs_container.grid(row=1, column=0, padx=25, pady=10, sticky="ew")
+        inputs_container.grid_columnconfigure(0, weight=1)
+
+        # Tarjeta de Modelo
+        modelo_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        modelo_card.grid(row=0, column=0, padx=0, pady=(0, 15), sticky="ew")
+        modelo_card.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            modelo_card, 
+            text="Modelo", 
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            text_color="#94A3B8"
+        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
+        
+        modelo_entry_frame = customtkinter.CTkFrame(modelo_card, fg_color="transparent")
+        modelo_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
         modelo_entry_frame.grid_columnconfigure(0, weight=1)
-        self.modelo_entry = customtkinter.CTkEntry(modelo_entry_frame, textvariable=self.modelo_var)
-        self.modelo_entry.grid(row=0, column=0, padx=(0,5), sticky="ew")
-        customtkinter.CTkButton(modelo_entry_frame, text="Pegar", width=60, command=self.pegar_modelo).grid(row=0, column=1, padx=0)
+        
+        self.modelo_entry = customtkinter.CTkEntry(
+            modelo_entry_frame, 
+            textvariable=self.modelo_var,
+            placeholder_text="Ej. iPhone 15 Pro Max",
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            placeholder_text_color="#64748B",
+            height=32,
+            corner_radius=8
+        )
+        self.modelo_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        
+        customtkinter.CTkButton(
+            modelo_entry_frame, 
+            text="Pegar", 
+            width=60, 
+            height=32,
+            corner_radius=8,
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            command=self.pegar_modelo
+        ).grid(row=0, column=1, padx=0)
 
-        customtkinter.CTkLabel(main_controls_frame, text="IMEI:", font=customtkinter.CTkFont(weight="bold")).grid(row=2, column=0, padx=0, pady=(0,2), sticky="w")
-        imei_entry_frame = customtkinter.CTkFrame(main_controls_frame, fg_color="transparent")
-        imei_entry_frame.grid(row=3, column=0, padx=0, pady=(0,20), sticky="ew")
+        # Tarjeta de IMEI
+        imei_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        imei_card.grid(row=1, column=0, padx=0, pady=(0, 15), sticky="ew")
+        imei_card.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            imei_card, 
+            text="IMEI", 
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            text_color="#94A3B8"
+        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
+        
+        imei_entry_frame = customtkinter.CTkFrame(imei_card, fg_color="transparent")
+        imei_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
         imei_entry_frame.grid_columnconfigure(0, weight=1)
-        self.imei_entry = customtkinter.CTkEntry(imei_entry_frame, textvariable=self.imei_var)
-        self.imei_entry.grid(row=0, column=0, padx=(0,5), sticky="ew")
-        customtkinter.CTkButton(imei_entry_frame, text="Pegar", width=60, command=self.pegar_imei).grid(row=0, column=1, padx=0)
-
-        # Selección de Logo
-        logo_frame = customtkinter.CTkFrame(main_controls_frame)
-        logo_frame.grid(row=4, column=0, sticky='ew', pady=(0,20))
-        logo_frame.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(logo_frame, text="Ruta del Logo:").grid(row=0, column=0, columnspan=2, padx=10, pady=(5,2), sticky="w")
-        customtkinter.CTkEntry(logo_frame, textvariable=self.logo_path_var).grid(row=1, column=0, padx=(10,5), pady=(0,10), sticky='ew')
-        customtkinter.CTkButton(logo_frame, text="Buscar...", width=80, command=self.buscar_logo).grid(row=1, column=1, padx=(0,10), pady=(0,10))
-
-        # Botones de Acción (PDF)
-        pdf_buttons_frame = customtkinter.CTkFrame(main_controls_frame, fg_color="transparent")
-        pdf_buttons_frame.grid(row=5, column=0, sticky='ew')
-        pdf_buttons_frame.grid_columnconfigure((0,1), weight=1)
-        customtkinter.CTkButton(pdf_buttons_frame, text="Guardar PDF", command=self.generar_y_guardar_pdf).grid(row=0, column=0, padx=(0,5), sticky='ew')
-        customtkinter.CTkButton(pdf_buttons_frame, text="Imprimir", command=self.imprimir).grid(row=0, column=1, padx=(5,0), sticky='ew')
         
-        # Botón de Configuración
-        customtkinter.CTkButton(self.controls_frame, text="Configurar SumatraPDF", command=self.configurar_ruta_sumatra_manualmente).grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.imei_entry = customtkinter.CTkEntry(
+            imei_entry_frame, 
+            textvariable=self.imei_var,
+            placeholder_text="Ej. 350123456789012",
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            placeholder_text_color="#64748B",
+            height=32,
+            corner_radius=8
+        )
+        self.imei_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         
-        # Etiqueta de autor
-        customtkinter.CTkLabel(self.controls_frame, text="Hecho por Micael  ", font=customtkinter.CTkFont(size=10, slant="italic"), text_color="gray50").grid(row=2, column=0, padx=20, pady=(10,10), sticky="sw")
+        customtkinter.CTkButton(
+            imei_entry_frame, 
+            text="Pegar", 
+            width=60, 
+            height=32,
+            corner_radius=8,
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            command=self.pegar_imei
+        ).grid(row=0, column=1, padx=0)
+
+        # Tarjeta de Logo
+        logo_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        logo_card.grid(row=2, column=0, padx=0, pady=(0, 20), sticky="ew")
+        logo_card.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            logo_card, 
+            text="Ruta del Logo", 
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            text_color="#94A3B8"
+        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
+        
+        logo_entry_frame = customtkinter.CTkFrame(logo_card, fg_color="transparent")
+        logo_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
+        logo_entry_frame.grid_columnconfigure(0, weight=1)
+        
+        self.logo_entry = customtkinter.CTkEntry(
+            logo_entry_frame, 
+            textvariable=self.logo_path_var,
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            height=32,
+            corner_radius=8
+        )
+        self.logo_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        
+        customtkinter.CTkButton(
+            logo_entry_frame, 
+            text="Buscar", 
+            width=60, 
+            height=32,
+            corner_radius=8,
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            command=self.buscar_logo
+        ).grid(row=0, column=1, padx=0)
+
+        # 3. Contenedor de Botones de Acción
+        actions_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
+        actions_container.grid(row=2, column=0, padx=25, pady=(5, 10), sticky="ew")
+        actions_container.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkButton(
+            actions_container, 
+            text="Guardar PDF", 
+            fg_color="#6366F1",  # Indigo Accent
+            hover_color="#4F46E5",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
+            height=40,
+            corner_radius=10,
+            command=self.generar_y_guardar_pdf
+        ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        
+        customtkinter.CTkButton(
+            actions_container, 
+            text="Imprimir", 
+            fg_color="#06B6D4",  # Cyan Accent
+            hover_color="#0891B2",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
+            height=40,
+            corner_radius=10,
+            command=self.imprimir
+        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+        # 4. Contenedor Inferior (Configuración & Autor)
+        footer_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
+        footer_container.grid(row=3, column=0, padx=25, pady=(10, 20), sticky="sew")
+        footer_container.grid_columnconfigure(0, weight=1)
+        
+        # Botón Outline de SumatraPDF
+        self.config_sumatra_btn = customtkinter.CTkButton(
+            footer_container, 
+            text="Configurar SumatraPDF", 
+            fg_color="transparent",
+            border_width=1,
+            border_color="#475569",
+            hover_color="#334155",
+            text_color="#94A3B8",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.configurar_ruta_sumatra_manualmente
+        )
+        self.config_sumatra_btn.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        
+        # Créditos
+        customtkinter.CTkLabel(
+            footer_container, 
+            text="Hecho por Micael", 
+            font=customtkinter.CTkFont(family="Inter", size=10, slant="italic"), 
+            text_color="#64748B"
+        ).grid(row=1, column=0, sticky="w")
 
         # Frame de Previsualización (Derecha)
         self.preview_frame.grid_rowconfigure(0, weight=1)
         self.preview_frame.grid_columnconfigure(0, weight=1)
-        self.preview_image_label = customtkinter.CTkLabel(self.preview_frame, text="La previsualización aparecerá aquí.", text_color="gray60")
-        self.preview_image_label.grid(row=0, column=0, sticky="nsew")
+        self.preview_image_label = customtkinter.CTkLabel(
+            self.preview_frame, 
+            text="Vista Previa de la Etiqueta\n\nIngresa el Modelo y el IMEI para generar la previsualización.", 
+            text_color="#94A3B8",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold")
+        )
+        self.preview_image_label.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
     def _bind_events(self):
         for var in [self.modelo_var, self.imei_var, self.logo_path_var]:
