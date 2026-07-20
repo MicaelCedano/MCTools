@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.0.1"
+VERSION = "3.1.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1770,10 +1770,19 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             # 2. Renombrar new a actual
             os.rename(new_exe, current_exe)
             
-            # 3. Lanzar nueva versión sin heredar _MEIPASS ni bloqueos de Windows
+            # 3. Lanzar nueva versión sin heredar variables de entorno de PyInstaller ni bloqueos de Windows
             env = os.environ.copy()
-            if "_MEIPASS" in env:
-                del env["_MEIPASS"]
+            for var in ["_MEIPASS", "TCL_LIBRARY", "TK_LIBRARY"]:
+                if var in env:
+                    del env[var]
+            
+            # Limpiar referencias de PATH al directorio temporal del padre
+            if "PATH" in env:
+                parent_mei = getattr(sys, '_MEIPASS', '')
+                if parent_mei:
+                    paths = env["PATH"].split(os.pathsep)
+                    paths = [p for p in paths if parent_mei not in p]
+                    env["PATH"] = os.pathsep.join(paths)
             
             if platform.system() == "Windows":
                 # DETACHED_PROCESS = 0x00000008
