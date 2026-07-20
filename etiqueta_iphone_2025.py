@@ -56,9 +56,9 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "2.1.2"
+VERSION = "3.0"
 REPO_OWNER = "MicaelCedano"
-REPO_NAME = "EtiquetaPro"
+REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
 LABEL_WIDTH_INCHES = 4
 LABEL_HEIGHT_INCHES = 3
@@ -672,7 +672,7 @@ def parse_version(v_str):
 class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
     def __init__(self, parent, version_nueva):
         super().__init__(parent)
-        self.title("Actualizando EtiquetaPro")
+        self.title("Actualizando McTools")
         self.geometry("400x150")
         self.resizable(False, False)
         
@@ -712,7 +712,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.cached_logo_pil = None
         
         # Configuración Inicial
-        self.title(f"Generador de Etiquetas iPhone v{VERSION}")
+        self.title(f"McTools v{VERSION}")
         if os.path.exists("logo.ico"):
             try:
                 self.iconbitmap("logo.ico")
@@ -766,7 +766,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         title_label = customtkinter.CTkLabel(
             title_container, 
-            text="EtiquetaPro", 
+            text="McTools", 
             font=customtkinter.CTkFont(family="Inter", size=24, weight="bold"),
             text_color="#06B6D4"  # Cyan Accent
         )
@@ -786,7 +786,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         subtitle_label = customtkinter.CTkLabel(
             header_frame, 
-            text="Generador de Etiquetas de iPhone", 
+            text="Herramientas de IMEI y Etiquetas", 
             font=customtkinter.CTkFont(family="Inter", size=12),
             text_color="#94A3B8"
         )
@@ -810,10 +810,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
+        self.tab_procesador = self.tabview.add("Procesador")
         
         # Configure columns inside tabs
         self.tab_barcode.grid_columnconfigure(0, weight=1)
         self.tab_qr.grid_columnconfigure(0, weight=1)
+        self.tab_procesador.grid_columnconfigure(0, weight=1)
 
         # ---------------- PESTAÑA CÓDIGO DE BARRAS ----------------
         inputs_barcode = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -924,6 +926,83 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         customtkinter.CTkButton(actions_qr, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=1, padx=(6, 0), sticky="ew")
 
 
+        # ---------------- PESTAÑA PROCESADOR ----------------
+        inputs_proc = customtkinter.CTkFrame(self.tab_procesador, fg_color="transparent")
+        inputs_proc.grid(row=0, column=0, sticky="ew")
+        inputs_proc.grid_columnconfigure(0, weight=1)
+
+        # Tarjeta Caja de Texto (Entrada RAW)
+        raw_card = customtkinter.CTkFrame(inputs_proc, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        raw_card.grid(row=0, column=0, padx=5, pady=(5, 12), sticky="ew")
+        raw_card.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(raw_card, text="Pega aquí el texto con IMEIs:", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        
+        self.proc_input_textbox = customtkinter.CTkTextbox(raw_card, height=180, font=customtkinter.CTkFont(size=11), fg_color="#1E293B", border_color="#475569", border_width=1, text_color="gray", corner_radius=8)
+        self.proc_input_textbox.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        self.proc_placeholder_text = "Pega aquí el texto con IMEIs a extraer..."
+        self.proc_input_textbox.insert("1.0", self.proc_placeholder_text)
+
+        # Checkbox de Omitir Posiciones Pares
+        self.proc_omit_alternate_var = tk.BooleanVar(value=False)
+        self.proc_omit_checkbox = customtkinter.CTkCheckBox(
+            inputs_proc,
+            text="Omitir IMEIs en posiciones pares\n(procesar 1°, 3°, 5°...)",
+            variable=self.proc_omit_alternate_var,
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            text_color="#94A3B8",
+            fg_color="#06B6D4",
+            hover_color="#0891B2",
+            border_color="#475569",
+            command=self.proc_extraer_imeis
+        )
+        self.proc_omit_checkbox.grid(row=1, column=0, padx=10, pady=(0, 15), sticky="w")
+
+        # Acciones Procesador (Izquierda)
+        actions_proc = customtkinter.CTkFrame(self.tab_procesador, fg_color="transparent")
+        actions_proc.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_proc.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkButton(
+            actions_proc,
+            text="Extraer IMEIs Únicos",
+            fg_color="#6366F1",
+            hover_color="#4F46E5",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
+            height=40,
+            corner_radius=10,
+            command=self.proc_extraer_imeis
+        ).grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        
+        limpiar_importar_frame = customtkinter.CTkFrame(actions_proc, fg_color="transparent")
+        limpiar_importar_frame.grid(row=1, column=0, sticky="ew")
+        limpiar_importar_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkButton(
+            limpiar_importar_frame,
+            text="Limpiar Todo",
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.proc_limpiar_campos
+        ).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        
+        customtkinter.CTkButton(
+            limpiar_importar_frame,
+            text="Importar TXT",
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.proc_importar_txt
+        ).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+
         # 3. Contenedor Inferior (Configuración & Autor)
         footer_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
         footer_container.grid(row=2, column=0, padx=20, pady=(5, 15), sticky="sew")
@@ -956,6 +1035,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Frame de Vista Previa (Derecha)
         self.preview_frame.grid_rowconfigure(0, weight=1)
         self.preview_frame.grid_columnconfigure(0, weight=1)
+        
         self.preview_image_label = customtkinter.CTkLabel(
             self.preview_frame, 
             text="Vista Previa de la Etiqueta\n\nIngresa el Modelo y datos para generar la previsualización.", 
@@ -963,6 +1043,37 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             font=customtkinter.CTkFont(family="Inter", size=13, weight="bold")
         )
         self.preview_image_label.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+
+        # Frame de Salida del Procesador (Derecha) - Oculto al inicio
+        self.procesador_output_frame = customtkinter.CTkFrame(self.preview_frame, fg_color="transparent")
+        self.procesador_output_frame.grid_rowconfigure(1, weight=1)
+        self.procesador_output_frame.grid_columnconfigure(0, weight=1)
+        
+        proc_header = customtkinter.CTkFrame(self.procesador_output_frame, fg_color="transparent")
+        proc_header.grid(row=0, column=0, padx=15, pady=(10, 5), sticky="ew")
+        proc_header.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(proc_header, text="IMEIs Únicos Extraídos", font=customtkinter.CTkFont(family="Inter", size=16, weight="bold"), text_color="#06B6D4").grid(row=0, column=0, sticky="w")
+        self.proc_count_label = customtkinter.CTkLabel(proc_header, text="0 IMEIs", font=customtkinter.CTkFont(family="Inter", size=12), text_color="#94A3B8")
+        self.proc_count_label.grid(row=0, column=1, sticky="e")
+        
+        self.proc_output_textbox = customtkinter.CTkTextbox(self.procesador_output_frame, font=customtkinter.CTkFont(size=12), fg_color="#0F172A", border_color="#334155", border_width=1, text_color="#F8FAFC", corner_radius=12)
+        self.proc_output_textbox.grid(row=1, column=0, padx=15, pady=5, sticky="nsew")
+        self.proc_output_textbox.configure(state="disabled")
+        
+        proc_actions = customtkinter.CTkFrame(self.procesador_output_frame, fg_color="transparent")
+        proc_actions.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="ew")
+        proc_actions.grid_columnconfigure((0, 1), weight=1)
+        
+        self.proc_copy_btn = customtkinter.CTkButton(proc_actions, text="Copiar al Portapapeles", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_copiar_portapapeles, state="disabled")
+        self.proc_copy_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        
+        self.proc_save_btn = customtkinter.CTkButton(proc_actions, text="Guardar como TXT", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_guardar_txt, state="disabled")
+        self.proc_save_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        
+        # Grid inicial para el procesador (oculto)
+        self.procesador_output_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        self.procesador_output_frame.grid_remove()
 
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
@@ -977,6 +1088,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.imeis_textbox.bind("<Button-1>", self.on_imeis_click)
         self.imeis_textbox.bind("<FocusIn>", self.on_imeis_focus_in)
         
+        # Binds para el cuadro de texto del Procesador
+        self.proc_input_textbox.bind("<KeyRelease>", self.on_proc_text_change)
+        self.proc_input_textbox.bind("<Button-1>", self.on_proc_click)
+        self.proc_input_textbox.bind("<FocusIn>", self.on_proc_focus_in)
+        
         # Actualizar cuando cambie la pestaña activa
         self.tabview.configure(command=self.schedule_preview_update)
 
@@ -987,6 +1103,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def force_preview_update(self):
         try:
             tab_activa = self.tabview.get()
+            
+            if tab_activa == "Procesador":
+                # Conmutar paneles: Ocultar previsualización y mostrar el procesador
+                self.preview_image_label.grid_remove()
+                self.procesador_output_frame.grid()
+                return
+            else:
+                # Conmutar paneles: Ocultar procesador y mostrar previsualización
+                self.procesador_output_frame.grid_remove()
+                self.preview_image_label.grid()
             
             # Asegurarnos de que el logo esté cargado en caché
             if self.cached_logo_pil is None and self.logo_path_var.get().strip():
@@ -1222,6 +1348,166 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         """Se activa al cambiar el texto de los IMEIs."""
         self.actualizar_contador_imeis()
         self.schedule_preview_update()
+
+    # ---------------- MÉTODOS DEL PROCESADOR DE IMEIS ----------------
+    def proc_extraer_imeis(self):
+        """Extrae IMEIs de 15 dígitos únicos, aplicando filtro de posiciones pares si es requerido."""
+        texto_crudo = self.proc_input_textbox.get("1.0", tk.END).strip()
+        if not texto_crudo or texto_crudo == self.proc_placeholder_text:
+            self.proc_output_textbox.configure(state="normal")
+            self.proc_output_textbox.delete("1.0", tk.END)
+            self.proc_output_textbox.configure(state="disabled")
+            self.proc_count_label.configure(text="0 IMEIs")
+            self.proc_copy_btn.configure(state="disabled")
+            self.proc_save_btn.configure(state="disabled")
+            return
+
+        # Encontrar todos los IMEIs de 15 dígitos con expresión regular
+        imei_pattern = r'\b\d{15}\b'
+        todos_los_imeis = re.findall(imei_pattern, texto_crudo)
+
+        # Aplicar filtro de posiciones pares (omitir impares en base 1-indexada, es decir indices 1, 3, 5 en 0-indexada)
+        imeis_filtrados = []
+        if self.proc_omit_alternate_var.get():
+            for i, imei in enumerate(todos_los_imeis):
+                if i % 2 == 0:  # Posiciones impares base 1-indexada (1, 3, 5...)
+                    imeis_filtrados.append(imei)
+        else:
+            imeis_filtrados = todos_los_imeis
+
+        # Eliminar duplicados manteniendo el orden
+        imeis_unicos = []
+        vistos = set()
+        for imei in imeis_filtrados:
+            if imei not in vistos:
+                imeis_unicos.append(imei)
+                vistos.add(imei)
+
+        # Escribir el resultado en la caja de salida
+        self.proc_output_textbox.configure(state="normal")
+        self.proc_output_textbox.delete("1.0", tk.END)
+        
+        if imeis_unicos:
+            self.proc_output_textbox.insert("1.0", "\n".join(imeis_unicos))
+            self.proc_count_label.configure(text=f"{len(imeis_unicos)} IMEIs")
+            self.proc_copy_btn.configure(state="normal")
+            self.proc_save_btn.configure(state="normal")
+        else:
+            self.proc_output_textbox.insert("1.0", "No se encontraron IMEIs válidos.")
+            self.proc_count_label.configure(text="0 IMEIs")
+            self.proc_copy_btn.configure(state="disabled")
+            self.proc_save_btn.configure(state="disabled")
+
+        self.proc_output_textbox.configure(state="disabled")
+
+    def proc_limpiar_campos(self):
+        """Limpia la entrada, salida y el contador del procesador."""
+        self.proc_input_textbox.delete("1.0", tk.END)
+        self.proc_input_textbox.insert("1.0", self.proc_placeholder_text)
+        self.proc_input_textbox.configure(text_color="gray")
+        
+        self.proc_output_textbox.configure(state="normal")
+        self.proc_output_textbox.delete("1.0", tk.END)
+        self.proc_output_textbox.configure(state="disabled")
+        
+        self.proc_count_label.configure(text="0 IMEIs")
+        self.proc_copy_btn.configure(state="disabled")
+        self.proc_save_btn.configure(state="disabled")
+        self.proc_input_textbox.focus_set()
+
+    def proc_importar_txt(self):
+        """Abre un archivo de texto e importa su contenido en el procesador."""
+        try:
+            default_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            if not os.path.isdir(default_dir): 
+                default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.isdir(default_dir): 
+                default_dir = os.getcwd()
+
+            filepath = filedialog.askopenfilename(
+                initialdir=default_dir,
+                title="Importar IMEIs desde archivo TXT",
+                filetypes=(("Archivos de Texto", "*.txt"), ("Todos los archivos", "*.*")),
+                parent=self
+            )
+            if filepath:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                self.proc_input_textbox.delete("1.0", tk.END)
+                self.proc_input_textbox.insert("1.0", content)
+                self.proc_input_textbox.configure(text_color="#F8FAFC")
+                
+                # Procesar automáticamente al importar
+                self.proc_extraer_imeis()
+        except Exception as e:
+            messagebox.showerror("Error al Importar", f"No se pudo leer el archivo.\nError: {e}", parent=self)
+
+    def proc_copiar_portapapeles(self):
+        """Copia la salida del procesador de IMEIs al portapapeles."""
+        texto_salida = self.proc_output_textbox.get("1.0", tk.END).strip()
+        if texto_salida and "No se encontraron IMEIs válidos." not in texto_salida:
+            try:
+                self.clipboard_clear()
+                self.clipboard_append(texto_salida)
+                messagebox.showinfo("Copiado", "¡IMEIs únicos copiados al portapapeles con éxito!", parent=self)
+            except Exception as e:
+                messagebox.showerror("Error al Copiar", f"No se pudo copiar al portapapeles:\n{e}", parent=self)
+
+    def proc_guardar_txt(self):
+        """Exporta los IMEIs limpios a un archivo de texto .txt."""
+        texto_salida = self.proc_output_textbox.get("1.0", tk.END).strip()
+        if not texto_salida or "No se encontraron IMEIs válidos." in texto_salida:
+            return
+
+        try:
+            default_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+            if not os.path.isdir(default_dir): 
+                default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
+            if not os.path.isdir(default_dir): 
+                default_dir = os.getcwd()
+
+            filepath = filedialog.asksaveasfilename(
+                initialdir=default_dir,
+                title="Guardar IMEIs como archivo TXT",
+                defaultextension=".txt",
+                filetypes=(("Archivos de Texto", "*.txt"), ("Todos los archivos", "*.*")),
+                initialfile="imeis_unicos_extraidos.txt",
+                parent=self
+            )
+            if filepath:
+                with open(filepath, "w", encoding="utf-8") as f:
+                    f.write(texto_salida)
+                messagebox.showinfo("Guardado", f"Archivo de texto guardado con éxito en:\n'{filepath}'", parent=self)
+        except Exception as e:
+            messagebox.showerror("Error al Guardar", f"No se pudo guardar el archivo.\nError: {e}", parent=self)
+
+    def on_proc_text_change(self, event):
+        """Se ejecuta cuando cambia el texto de entrada en el procesador."""
+        # Si tiene texto válido, cambiar color del texto
+        texto_actual = self.proc_input_textbox.get("1.0", tk.END).strip()
+        if texto_actual and texto_actual != self.proc_placeholder_text:
+            self.proc_input_textbox.configure(text_color="#F8FAFC")
+        
+        # Procesamiento dinámico desactivado por defecto (se activa con botón o cambio de checkbox),
+        # pero podemos actualizar el estado de los botones si el usuario borra todo.
+        if not texto_actual:
+            self.proc_copy_btn.configure(state="disabled")
+            self.proc_save_btn.configure(state="disabled")
+
+    def on_proc_click(self, event):
+        """Limpia el placeholder si el usuario hace clic."""
+        texto_actual = self.proc_input_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.proc_placeholder_text:
+            self.proc_input_textbox.delete("1.0", tk.END)
+            self.proc_input_textbox.configure(text_color="#F8FAFC")
+
+    def on_proc_focus_in(self, event):
+        """Limpia el placeholder al recibir el foco."""
+        texto_actual = self.proc_input_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.proc_placeholder_text:
+            self.proc_input_textbox.delete("1.0", tk.END)
+            self.proc_input_textbox.configure(text_color="#F8FAFC")
 
     def cargar_y_cachear_logo(self):
         """Carga y procesa el logo de forma que esté listo para el renderizado instantáneo en memoria."""
