@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "2.1"
+VERSION = "2.1.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "EtiquetaPro"
 CONFIG_FILE_NAME = "etiqueta_config.json"
