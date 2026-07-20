@@ -1,0 +1,20 @@
+# Carpetas de compilación de PyInstaller
+build/
+*.spec
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Configuración del editor o del sistema
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+etiqueta_config.json
+*.pdf
+*.png.new
+*.exe.new
+*.exe.old
