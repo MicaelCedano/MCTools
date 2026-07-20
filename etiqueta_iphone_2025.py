@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.2.1"
+VERSION = "3.2.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
