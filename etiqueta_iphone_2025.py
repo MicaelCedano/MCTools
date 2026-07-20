@@ -45,7 +45,7 @@ except ImportError:
     PDF_SAVE_ENABLED = False
 
 # --- Constantes ---
-VERSION = "3.2.5"
+VERSION = "2.0"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "EtiquetaPro"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -706,6 +706,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 
             latest_version_tag = data.get("tag_name", "")
             latest_version = latest_version_tag.lstrip('v')
+            # Si el tag no tiene digitos (ej. "EtiquetaPro"), intentar usar el titulo del release
+            if not any(c.isdigit() for c in latest_version):
+                release_title = data.get("name", "")
+                if release_title:
+                    latest_version_tag = release_title
+                    latest_version = release_title.lstrip('v')
             current_ver = VERSION.lstrip('v')
             
             if parse_version(latest_version) > parse_version(current_ver):
