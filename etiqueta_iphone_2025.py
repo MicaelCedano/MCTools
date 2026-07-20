@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.0"
+VERSION = "3.0.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1770,8 +1770,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             # 2. Renombrar new a actual
             os.rename(new_exe, current_exe)
             
-            # 3. Lanzar nueva versión
-            subprocess.Popen([current_exe])
+            # 3. Lanzar nueva versión sin heredar _MEIPASS ni bloqueos de Windows
+            env = os.environ.copy()
+            if "_MEIPASS" in env:
+                del env["_MEIPASS"]
+            
+            if platform.system() == "Windows":
+                # DETACHED_PROCESS = 0x00000008
+                subprocess.Popen([current_exe], env=env, creationflags=0x00000008, close_fds=True)
+            else:
+                subprocess.Popen([current_exe], env=env)
             
             # 4. Cerrar la app actual
             os._exit(0)
