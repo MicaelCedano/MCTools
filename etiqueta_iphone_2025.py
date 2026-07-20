@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1802,10 +1802,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.after(100, lambda: self.mostrar_dialogo_actualizacion(latest_version_tag, changelog_text, exe_url, exe_name, html_url))
         except Exception as e:
             print(f"Error al buscar actualizaciones en GitHub: {e}")
+        finally:
+            # Volver a programar el chequeo periódico cada 15 minutos (900,000 ms) mientras la app esté abierta
+            self.after(900000, self.chequear_actualizaciones_async)
 
     def mostrar_dialogo_actualizacion(self, nueva_version, changelog, exe_url, exe_name, html_url):
         """Muestra el diálogo informando de la nueva versión con notas del release."""
-        VentanaActualizacionDisponible(self, nueva_version, changelog, exe_url, exe_name, html_url)
+        # Evitar abrir múltiples ventanas si ya hay una abierta
+        if hasattr(self, 'ventana_actualizacion') and self.ventana_actualizacion and self.ventana_actualizacion.winfo_exists():
+            return
+        self.ventana_actualizacion = VentanaActualizacionDisponible(self, nueva_version, changelog, exe_url, exe_name, html_url)
 
     def iniciar_descarga_actualizacion(self, exe_url, exe_name, nueva_version):
         """Crea la ventana de progreso e inicia la descarga."""
