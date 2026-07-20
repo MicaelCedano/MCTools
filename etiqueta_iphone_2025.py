@@ -669,6 +669,122 @@ def parse_version(v_str):
         res.append(0)
     return tuple(res[:3])
 
+class VentanaActualizacionDisponible(customtkinter.CTkToplevel):
+    def __init__(self, parent, nueva_version, changelog, exe_url, exe_name, html_url):
+        super().__init__(parent)
+        self.parent = parent
+        self.nueva_version = nueva_version
+        self.exe_url = exe_url
+        self.exe_name = exe_name
+        self.html_url = html_url
+        
+        self.title("Actualización Disponible")
+        self.geometry("520x450")
+        self.resizable(False, False)
+        self.configure(fg_color="#0F172A")
+        
+        # Make transient and grab focus
+        self.transient(parent)
+        self.grab_set()
+        
+        # Center window relative to parent
+        self.update_idletasks()
+        p_w = parent.winfo_width()
+        p_h = parent.winfo_height()
+        p_x = parent.winfo_x()
+        p_y = parent.winfo_y()
+        x = p_x + (p_w - 520) // 2
+        y = p_y + (p_h - 450) // 2
+        self.geometry(f"520x450+{x}+{y}")
+        
+        # Layout
+        self.grid_rowconfigure(2, weight=1)
+        self.grid_columnconfigure(0, weight=1)
+        
+        # Icon/Header
+        header_label = customtkinter.CTkLabel(
+            self, 
+            text="✨ ¡Nueva actualización disponible! ✨", 
+            font=customtkinter.CTkFont(family="Inter", size=18, weight="bold"),
+            text_color="#06B6D4"
+        )
+        header_label.grid(row=0, column=0, padx=20, pady=(20, 5), sticky="w")
+        
+        version_label = customtkinter.CTkLabel(
+            self, 
+            text=f"Versión actual: v{VERSION}  ➡  Nueva versión: {nueva_version}", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"),
+            text_color="#94A3B8"
+        )
+        version_label.grid(row=1, column=0, padx=20, pady=(0, 10), sticky="w")
+        
+        # Changelog frame & text
+        changelog_frame = customtkinter.CTkFrame(self, fg_color="#1E293B", border_width=1, border_color="#334155", corner_radius=12)
+        changelog_frame.grid(row=2, column=0, padx=20, pady=10, sticky="nsew")
+        changelog_frame.grid_rowconfigure(1, weight=1)
+        changelog_frame.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            changelog_frame, 
+            text="¿Qué hay de nuevo?", 
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            text_color="#64748B"
+        ).grid(row=0, column=0, padx=15, pady=(8, 2), sticky="w")
+        
+        self.textbox = customtkinter.CTkTextbox(
+            changelog_frame, 
+            font=customtkinter.CTkFont(size=11), 
+            fg_color="#0F172A", 
+            text_color="#F8FAFC", 
+            border_width=0, 
+            corner_radius=8
+        )
+        self.textbox.grid(row=1, column=0, padx=15, pady=(0, 15), sticky="nsew")
+        
+        # Clean up changelog body formatting
+        clean_changelog = changelog.strip() if changelog else "No se proporcionaron detalles sobre esta versión."
+        self.textbox.insert("1.0", clean_changelog)
+        self.textbox.configure(state="disabled")
+        
+        # Buttons
+        buttons_frame = customtkinter.CTkFrame(self, fg_color="transparent")
+        buttons_frame.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
+        buttons_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        self.cancel_btn = customtkinter.CTkButton(
+            buttons_frame, 
+            text="Cancelar", 
+            fg_color="#334155", 
+            hover_color="#475569", 
+            text_color="#F8FAFC", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            height=40, 
+            corner_radius=10, 
+            command=self.destroy
+        )
+        self.cancel_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        
+        action_text = "Instalar ahora" if (getattr(sys, 'frozen', False) and exe_url) else "Ver en GitHub"
+        self.update_btn = customtkinter.CTkButton(
+            buttons_frame, 
+            text=action_text, 
+            fg_color="#6366F1", 
+            hover_color="#4F46E5", 
+            text_color="#FFFFFF", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            height=40, 
+            corner_radius=10, 
+            command=self.proceder_actualizacion
+        )
+        self.update_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        
+    def proceder_actualizacion(self):
+        self.destroy()
+        if getattr(sys, 'frozen', False) and self.exe_url:
+            self.parent.iniciar_descarga_actualizacion(self.exe_url, self.exe_name, self.nueva_version)
+        else:
+            webbrowser.open(self.html_url)
+
 class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
     def __init__(self, parent, version_nueva):
         super().__init__(parent)
@@ -1584,31 +1700,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                         break
                 
                 html_url = data.get("html_url", f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases")
+                changelog_text = data.get("body", "")
                 
                 # Programar en el hilo principal de Tkinter
-                self.after(100, lambda: self.mostrar_dialogo_actualizacion(latest_version_tag, exe_url, exe_name, html_url))
+                self.after(100, lambda: self.mostrar_dialogo_actualizacion(latest_version_tag, changelog_text, exe_url, exe_name, html_url))
         except Exception as e:
             print(f"Error al buscar actualizaciones en GitHub: {e}")
 
-    def mostrar_dialogo_actualizacion(self, nueva_version, exe_url, exe_name, html_url):
-        """Muestra el diálogo informando de la nueva versión."""
-        if getattr(sys, 'frozen', False) and exe_url:
-            respuesta = messagebox.askyesno(
-                "Actualización Disponible",
-                f"¡Hay una nueva versión disponible ({nueva_version})!\n\n"
-                "¿Deseas descargarla e instalarla automáticamente ahora mismo?"
-            )
-            if respuesta:
-                self.iniciar_descarga_actualizacion(exe_url, exe_name, nueva_version)
-        else:
-            # Si no es un binario congelado, o no hay .exe asset, abrimos la página
-            respuesta = messagebox.askyesno(
-                "Actualización Disponible",
-                f"¡Hay una nueva versión disponible ({nueva_version})!\n\n"
-                "¿Deseas abrir la página de descargas en tu navegador?"
-            )
-            if respuesta:
-                webbrowser.open(html_url)
+    def mostrar_dialogo_actualizacion(self, nueva_version, changelog, exe_url, exe_name, html_url):
+        """Muestra el diálogo informando de la nueva versión con notas del release."""
+        VentanaActualizacionDisponible(self, nueva_version, changelog, exe_url, exe_name, html_url)
 
     def iniciar_descarga_actualizacion(self, exe_url, exe_name, nueva_version):
         """Crea la ventana de progreso e inicia la descarga."""
