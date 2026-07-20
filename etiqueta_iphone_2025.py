@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.1.1"
+VERSION = "3.1.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -74,6 +74,27 @@ def _obtener_ruta_fuente(nombre_fuente):
         if os.path.exists(ruta_sistema):
             return ruta_sistema
     return nombre_fuente
+
+def obtener_lista_impresoras():
+    """Enumera las impresoras instaladas en el sistema operativo Windows."""
+    if platform.system() == "Windows":
+        try:
+            import win32print
+            printers = win32print.EnumPrinters(win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS)
+            return [p[2] for p in printers]
+        except Exception:
+            return []
+    return []
+
+def obtener_impresora_predeterminada():
+    """Obtiene el nombre de la impresora predeterminada de Windows."""
+    if platform.system() == "Windows":
+        try:
+            import win32print
+            return win32print.GetDefaultPrinter()
+        except Exception:
+            return ""
+    return ""
 
 FONT_BOLD_PATH_TTF = _obtener_ruta_fuente("arialbd.ttf")
 FONT_REGULAR_PATH_TTF = _obtener_ruta_fuente("arial.ttf")
@@ -147,6 +168,17 @@ def guardar_logo_config(logo_path):
         config = _read_config()
         config["logo_path"] = logo_path
         _write_config(config)
+
+def cargar_impresora_config():
+    """Carga el nombre de la impresora guardada en la configuración."""
+    config = _read_config()
+    return config.get("printer_name", "")
+
+def guardar_impresora_config(printer_name):
+    """Guarda el nombre de la impresora en la configuración."""
+    config = _read_config()
+    config["printer_name"] = printer_name
+    _write_config(config)
 
 def guardar_config_sumatra():
     """Guarda solo la ruta de SumatraPDF en el archivo de configuración."""
@@ -1124,6 +1156,42 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         footer_container.grid(row=2, column=0, padx=20, pady=(5, 15), sticky="sew")
         footer_container.grid_columnconfigure(0, weight=1)
         
+        # Selector de Impresora
+        customtkinter.CTkLabel(
+            footer_container, 
+            text="Seleccionar Impresora", 
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), 
+            text_color="#94A3B8"
+        ).grid(row=0, column=0, sticky="w", pady=(0, 2))
+        
+        impresoras = obtener_lista_impresoras()
+        default_sys_printer = obtener_impresora_predeterminada()
+        saved_printer = cargar_impresora_config()
+        
+        # Validar si la impresora guardada sigue disponible, de lo contrario usar predeterminada
+        if saved_printer and saved_printer in impresoras:
+            active_printer = saved_printer
+        elif default_sys_printer:
+            active_printer = default_sys_printer
+        else:
+            active_printer = impresoras[0] if impresoras else "Impresora Predeterminada"
+            
+        self.printer_var = tk.StringVar(value=active_printer)
+        self.printer_combo = customtkinter.CTkComboBox(
+            footer_container,
+            values=impresoras if impresoras else ["Impresora Predeterminada"],
+            variable=self.printer_var,
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            height=32,
+            corner_radius=8,
+            command=self.al_seleccionar_impresora
+        )
+        self.printer_combo.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        
         # Botón Outline de SumatraPDF
         self.config_sumatra_btn = customtkinter.CTkButton(
             footer_container, 
@@ -1138,7 +1206,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             corner_radius=8,
             command=self.configurar_ruta_sumatra_manualmente
         )
-        self.config_sumatra_btn.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        self.config_sumatra_btn.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         
         # Créditos
         customtkinter.CTkLabel(
@@ -1146,7 +1214,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text="Hecho por Micael", 
             font=customtkinter.CTkFont(family="Inter", size=10, slant="italic"), 
             text_color="#64748B"
-        ).grid(row=1, column=0, sticky="w")
+        ).grid(row=3, column=0, sticky="w")
 
         # Frame de Vista Previa (Derecha)
         self.preview_frame.grid_rowconfigure(0, weight=1)
@@ -1344,15 +1412,39 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         current_os = platform.system()
         try:
             if current_os == "Windows":
-                if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH):
-                    subprocess.Popen([SUMATRA_PDF_PATH, "-print-to-default", "-silent", filepath])
-                else: os.startfile(filepath, "print")
+                printer_name = self.printer_var.get().strip()
+                
+                # Si está seleccionada la "Impresora Predeterminada", usar la lógica predeterminada
+                if printer_name == "Impresora Predeterminada":
+                    if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH):
+                        subprocess.Popen([SUMATRA_PDF_PATH, "-print-to-default", "-silent", filepath])
+                    else:
+                        os.startfile(filepath, "print")
+                else:
+                    if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH):
+                        # SumatraPDF -print-to "<printer-name>" -silent filepath
+                        subprocess.Popen([SUMATRA_PDF_PATH, "-print-to", printer_name, "-silent", filepath])
+                    else:
+                        # Si no hay SumatraPDF, usar win32api "printto" verb
+                        try:
+                            import win32api
+                            win32api.ShellExecute(0, "printto", filepath, f'"{printer_name}"', ".", 0)
+                        except Exception:
+                            # Fallback si falla
+                            os.startfile(filepath, "print")
             elif current_os in ["Darwin", "Linux"]:
-                cmd = "lpr" if current_os == "Darwin" else "lp"
-                subprocess.run([cmd, filepath], check=True)
-            else: messagebox.showwarning("Sistema No Soportado", f"La impresión directa no está configurada para {current_os}.")
-        except FileNotFoundError: messagebox.showerror("Error de Comando", "Comando de impresión no encontrado (lpr o lp). Asegúrate de que esté instalado.")
-        except Exception as e: messagebox.showerror("Error de Impresión", f"Ocurrió un error inesperado al imprimir:\n\n{e}")
+                printer_name = self.printer_var.get().strip()
+                if printer_name == "Impresora Predeterminada":
+                    cmd = ["lpr", filepath] if current_os == "Darwin" else ["lp", filepath]
+                else:
+                    cmd = ["lpr", "-P", printer_name, filepath] if current_os == "Darwin" else ["lp", "-d", printer_name, filepath]
+                subprocess.run(cmd, check=True)
+            else:
+                messagebox.showwarning("Sistema No Soportado", f"La impresión directa no está configurada para {current_os}.")
+        except FileNotFoundError:
+            messagebox.showerror("Error de Comando", "Comando de impresión no encontrado. Asegúrate de tener SumatraPDF configurado en Windows o lpr/lp en Unix.")
+        except Exception as e:
+            messagebox.showerror("Error de Impresión", f"Ocurrió un error inesperado al imprimir:\n\n{e}")
 
     def pegar_modelo(self):
         """Pega el contenido del portapapeles en el campo de Modelo, limpiando el contenido anterior y eliminando colores."""
@@ -1643,6 +1735,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         """Recarga el logo en caché y actualiza la previsualización."""
         self.cargar_y_cachear_logo()
         self.schedule_preview_update()
+
+    def al_seleccionar_impresora(self, valor):
+        """Callback al seleccionar una impresora de la lista."""
+        guardar_impresora_config(valor)
 
     def buscar_logo(self):
         filepath = filedialog.askopenfilename(title="Seleccionar archivo de logo", filetypes=[("Archivos de Imagen", "*.png *.jpg *.jpeg"), ("Todos los archivos", "*.*")])
