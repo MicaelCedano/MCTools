@@ -932,6 +932,20 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         version_badge.grid(row=0, column=1, padx=(8, 0), sticky="w")
         
+        self.btn_update = customtkinter.CTkButton(
+            title_container, 
+            text="Buscar act.", 
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#F8FAFC",
+            fg_color="#334155",
+            hover_color="#475569",
+            corner_radius=6,
+            height=18,
+            width=80,
+            command=lambda: self.chequear_actualizaciones_async(manual=True)
+        )
+        self.btn_update.grid(row=0, column=2, padx=(8, 0), sticky="w")
+        
         subtitle_label = customtkinter.CTkLabel(
             header_frame, 
             text="Herramientas de IMEI y Etiquetas", 
@@ -1749,13 +1763,15 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             messagebox.showinfo("Éxito", f"La ruta de SumatraPDF ha sido establecida a:\n{filepath}")
         elif filepath: messagebox.showerror("Archivo Incorrecto", "Por favor, selecciona el archivo 'SumatraPDF.exe'.")
 
-    def chequear_actualizaciones_async(self):
+    def chequear_actualizaciones_async(self, manual=False):
         """Inicia el hilo para buscar actualizaciones."""
-        thread = threading.Thread(target=self._hilo_chequeo_actualizaciones)
+        if manual:
+            self.btn_update.configure(text="Buscando...", fg_color="#334155", state="disabled")
+        thread = threading.Thread(target=self._hilo_chequeo_actualizaciones, args=(manual,))
         thread.daemon = True
         thread.start()
 
-    def _hilo_chequeo_actualizaciones(self):
+    def _hilo_chequeo_actualizaciones(self, manual=False):
         try:
             url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
             req = urllib.request.Request(
@@ -1790,12 +1806,20 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 changelog_text = data.get("body", "")
                 
                 # Programar en el hilo principal de Tkinter
+                self.after(100, lambda: self.btn_update.configure(text="¡Nueva act.!", fg_color="#EF4444", state="normal"))
                 self.after(100, lambda: self.mostrar_dialogo_actualizacion(latest_version_tag, changelog_text, exe_url, exe_name, html_url))
+            else:
+                self.after(100, lambda: self.btn_update.configure(text="Al día", fg_color="#10B981", state="normal"))
+                if manual:
+                    self.after(200, lambda: messagebox.showinfo("Actualizado", f"Ya tienes la versión más reciente (v{VERSION})."))
         except Exception as e:
             print(f"Error al buscar actualizaciones en GitHub: {e}")
+            self.after(100, lambda: self.btn_update.configure(text="Error", fg_color="#EF4444", state="normal"))
+            if manual:
+                self.after(200, lambda: messagebox.showerror("Error", f"No se pudo buscar actualizaciones:\n{e}"))
         finally:
             # Volver a programar el chequeo periódico cada 15 minutos (900,000 ms) mientras la app esté abierta
-            self.after(900000, self.chequear_actualizaciones_async)
+            self.after(900000, lambda: self.chequear_actualizaciones_async(manual=False))
 
     def mostrar_dialogo_actualizacion(self, nueva_version, changelog, exe_url, exe_name, html_url):
         """Muestra el diálogo informando de la nueva versión con notas del release."""
