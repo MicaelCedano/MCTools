@@ -45,6 +45,16 @@ except ImportError:
     print("ADVERTENCIA: La librería 'ReportLab' no está instalada. El guardado en PDF y la impresión estarán deshabilitados.")
     PDF_SAVE_ENABLED = False
 
+# --- Corregir Directorio de Trabajo ---
+def corregir_directorio_trabajo():
+    if getattr(sys, 'frozen', False):
+        dir_path = os.path.dirname(sys.executable)
+    else:
+        dir_path = os.path.dirname(os.path.abspath(__file__))
+    os.chdir(dir_path)
+
+corregir_directorio_trabajo()
+
 # --- Constantes ---
 VERSION = "2.1"
 REPO_OWNER = "MicaelCedano"
@@ -697,6 +707,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Configuración Inicial
         self.title(f"Generador de Etiquetas iPhone v{VERSION}")
+        if os.path.exists("logo.ico"):
+            try:
+                self.iconbitmap("logo.ico")
+            except Exception:
+                pass
         self.geometry("920x720")  # Aumentado para acomodar el cuadro de texto
         self.minsize(920, 720)
         self.configure(fg_color="#0F172A")  # Slate-900 Main Window
