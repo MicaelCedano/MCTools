@@ -1009,9 +1009,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Acciones Barcode
         actions_bc = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
         actions_bc.grid(row=1, column=0, sticky="ew", pady=(5, 5))
-        actions_bc.grid_columnconfigure((0, 1), weight=1)
-        customtkinter.CTkButton(actions_bc, text="Guardar PDF", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.generar_y_guardar_pdf).grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        customtkinter.CTkButton(actions_bc, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        actions_bc.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkButton(actions_bc, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
 
 
         # ---------------- PESTAÑA CÓDIGO QR ----------------
@@ -1069,9 +1068,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Acciones QR
         actions_qr = customtkinter.CTkFrame(self.tab_qr, fg_color="transparent")
         actions_qr.grid(row=1, column=0, sticky="ew", pady=(5, 5))
-        actions_qr.grid_columnconfigure((0, 1), weight=1)
-        customtkinter.CTkButton(actions_qr, text="Guardar PDF", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.generar_y_guardar_pdf).grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        customtkinter.CTkButton(actions_qr, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        actions_qr.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkButton(actions_qr, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
 
 
         # ---------------- PESTAÑA PROCESADOR ----------------
@@ -1327,13 +1325,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.preview_image_label.configure(image=self.preview_ctk_image, text="")
         except Exception as e:
             self.preview_image_label.configure(image=None, text=f"Error en preview:\n{e}")
-
-    def generar_y_guardar_pdf(self):
-        tab_activa = self.tabview.get()
-        if tab_activa == "Código de Barras":
-            self._procesar_generacion_barcode(guardar_permanente=True)
-        else:
-            self._procesar_generacion_qr(guardar_permanente=True)
 
     def imprimir(self):
         tab_activa = self.tabview.get()
