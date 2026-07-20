@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "2.1.1"
+VERSION = "2.1.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "EtiquetaPro"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -77,6 +77,21 @@ def _obtener_ruta_fuente(nombre_fuente):
 
 FONT_BOLD_PATH_TTF = _obtener_ruta_fuente("arialbd.ttf")
 FONT_REGULAR_PATH_TTF = _obtener_ruta_fuente("arial.ttf")
+
+# --- Cache de Fuentes PIL ---
+_fuentes_pil_cache = {}
+
+def obtener_fuente_pil(ruta_fuente, tamano):
+    clave = (ruta_fuente, tamano)
+    if clave not in _fuentes_pil_cache:
+        try:
+            if os.path.exists(ruta_fuente):
+                _fuentes_pil_cache[clave] = ImageFont.truetype(ruta_fuente, size=tamano)
+            else:
+                _fuentes_pil_cache[clave] = ImageFont.load_default()
+        except Exception:
+            _fuentes_pil_cache[clave] = ImageFont.load_default()
+    return _fuentes_pil_cache[clave]
 
 # --- Nombres de Fuentes para ReportLab (PDF) ---
 RL_FONT_BOLD_NAME = "ArialBoldRegistered"
@@ -195,7 +210,7 @@ def cargar_fuentes_pdf():
 
 # --- FUNCIÓN DE PREVISUALIZACIÓN ---
 # --- FUNCIÓN DE PREVISUALIZACIÓN (CÓDIGO DE BARRAS) ---
-def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, path_logo_pil):
+def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, logo_pil_image):
     """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
     DPI = 300
     LABEL_WIDTH_PX, LABEL_HEIGHT_PX = int(LABEL_WIDTH_INCHES * DPI), int(LABEL_HEIGHT_INCHES * DPI)
@@ -206,26 +221,23 @@ def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, pa
     
     image = Image.new("RGB", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), "white")
     draw = ImageDraw.Draw(image)
-    try:
-        font_bold = ImageFont.truetype(FONT_BOLD_PATH_TTF, size=int(12 * DPI / 72))
-        font_regular = ImageFont.truetype(FONT_REGULAR_PATH_TTF, size=int(10 * DPI / 72))
-    except IOError:
-        font_bold, font_regular = ImageFont.load_default(), ImageFont.load_default()
+    
+    font_bold = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(12 * DPI / 72))
+    font_regular = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(10 * DPI / 72))
     
     current_y = TOP_MARGIN_PX
     
     # 1. Logo
-    if path_logo_pil and os.path.exists(path_logo_pil):
+    if logo_pil_image:
         try:
-            with Image.open(path_logo_pil) as logo_img:
-                logo_img = logo_img.convert("RGBA")
-                logo_max_width = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
-                logo_max_height = int(0.28 * LABEL_HEIGHT_PX)
-                logo_img.thumbnail((logo_max_width, logo_max_height), Image.Resampling.LANCZOS)
-                
-                logo_x = (LABEL_WIDTH_PX - logo_img.width) // 2
-                image.paste(logo_img, (logo_x, current_y), logo_img)
-                current_y += logo_img.height + int(0.1 * DPI)
+            logo_img = logo_pil_image.copy()
+            logo_max_width = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
+            logo_max_height = int(0.28 * LABEL_HEIGHT_PX)
+            logo_img.thumbnail((logo_max_width, logo_max_height), Image.Resampling.LANCZOS)
+            
+            logo_x = (LABEL_WIDTH_PX - logo_img.width) // 2
+            image.paste(logo_img, (logo_x, current_y), logo_img)
+            current_y += logo_img.height + int(0.1 * DPI)
         except Exception as e:
             print(f"Error procesando logo: {e}")
 
@@ -276,7 +288,7 @@ def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, pa
                 # Usar LANCZOS para mejor calidad en redimensionamiento
                 barcode_pil = barcode_pil.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-            sn_font = ImageFont.truetype(FONT_REGULAR_PATH_TTF, size=int(9 * DPI / 72))
+            sn_font = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(9 * DPI / 72))
             sn_text_w = draw.textlength(numero_serie, font=sn_font)
             
             bc_x = (LABEL_WIDTH_PX - barcode_pil.width) // 2
@@ -400,7 +412,7 @@ def generar_texto_qr(imeis):
     """Genera el texto que se incluirá en el código QR con los IMEIs."""
     return "\n".join([imei.strip() for imei in imeis if imei.strip()])
 
-def _generar_etiqueta_qr_pil_image(modelo, imeis, path_logo_pil):
+def _generar_etiqueta_qr_pil_image(modelo, imeis, logo_pil_image):
     """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
     DPI = 300
     LABEL_WIDTH_PX, LABEL_HEIGHT_PX = int(LABEL_WIDTH_INCHES * DPI), int(LABEL_HEIGHT_INCHES * DPI)
@@ -411,26 +423,23 @@ def _generar_etiqueta_qr_pil_image(modelo, imeis, path_logo_pil):
     
     image = Image.new("RGB", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), "white")
     draw = ImageDraw.Draw(image)
-    try:
-        font_bold = ImageFont.truetype(FONT_BOLD_PATH_TTF, size=int(12 * DPI / 72))
-        font_regular = ImageFont.truetype(FONT_REGULAR_PATH_TTF, size=int(10 * DPI / 72))
-    except IOError:
-        font_bold, font_regular = ImageFont.load_default(), ImageFont.load_default()
+    
+    font_bold = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(12 * DPI / 72))
+    font_regular = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(10 * DPI / 72))
     
     current_y = TOP_MARGIN_PX
     
     # 1. Logo
-    if path_logo_pil and os.path.exists(path_logo_pil):
+    if logo_pil_image:
         try:
-            with Image.open(path_logo_pil) as logo_img:
-                logo_img = logo_img.convert("RGBA")
-                logo_max_width = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
-                logo_max_height = int(0.28 * LABEL_HEIGHT_PX)
-                logo_img.thumbnail((logo_max_width, logo_max_height), Image.Resampling.LANCZOS)
-                
-                logo_x = (LABEL_WIDTH_PX - logo_img.width) // 2
-                image.paste(logo_img, (logo_x, current_y), logo_img)
-                current_y += logo_img.height + int(0.15 * DPI)
+            logo_img = logo_pil_image.copy()
+            logo_max_width = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
+            logo_max_height = int(0.28 * LABEL_HEIGHT_PX)
+            logo_img.thumbnail((logo_max_width, logo_max_height), Image.Resampling.LANCZOS)
+            
+            logo_x = (LABEL_WIDTH_PX - logo_img.width) // 2
+            image.paste(logo_img, (logo_x, current_y), logo_img)
+            current_y += logo_img.height + int(0.15 * DPI)
         except Exception as e:
             print(f"Error procesando logo: {e}")
 
@@ -450,11 +459,7 @@ def _generar_etiqueta_qr_pil_image(modelo, imeis, path_logo_pil):
         
         if texto_largo > ancho_disponible:
             for size in [11, 10, 9, 8]:
-                try:
-                    font_ajustado = ImageFont.truetype(FONT_BOLD_PATH_TTF, size=int(size * DPI / 72))
-                except IOError:
-                    font_ajustado = ImageFont.load_default()
-                
+                font_ajustado = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(size * DPI / 72))
                 texto_largo = draw.textlength(texto_modelo, font=font_ajustado)
                 if texto_largo <= ancho_disponible:
                     texto_font = font_ajustado
@@ -704,6 +709,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         super().__init__()
         self.preview_ctk_image = None
         self._preview_update_job = None
+        self.cached_logo_pil = None
         
         # Configuración Inicial
         self.title(f"Generador de Etiquetas iPhone v{VERSION}")
@@ -733,6 +739,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.preview_frame.grid(row=0, column=1, padx=25, pady=25, sticky="nsew")
 
         self._setup_ui()
+        self.cargar_y_cachear_logo()
         self._bind_events()
         self.after(100, self.force_preview_update)
         self.after(2000, self.chequear_actualizaciones_async)
@@ -959,8 +966,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
-        for var in [self.modelo_var, self.imei_var, self.logo_path_var]:
+        for var in [self.modelo_var, self.imei_var]:
             var.trace_add("write", self.schedule_preview_update)
+            
+        # Evento específico para recargar logo si cambia la ruta
+        self.logo_path_var.trace_add("write", self.on_logo_path_change)
             
         # Binds para el cuadro de texto de IMEIs
         self.imeis_textbox.bind("<KeyRelease>", self.on_imeis_text_change)
@@ -978,12 +988,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         try:
             tab_activa = self.tabview.get()
             
+            # Asegurarnos de que el logo esté cargado en caché
+            if self.cached_logo_pil is None and self.logo_path_var.get().strip():
+                self.cargar_y_cachear_logo()
+            
             if tab_activa == "Código de Barras":
                 pil_image = _generar_etiqueta_barcode_pil_image(
                     self.modelo_var.get().strip().upper(),
                     self.imei_var.get().strip().upper(),
                     "",
-                    self.logo_path_var.get().strip()
+                    self.cached_logo_pil
                 )
             else:  # Código QR
                 imeis = self.obtener_imeis_del_texto()
@@ -991,7 +1005,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 pil_image = _generar_etiqueta_qr_pil_image(
                     self.modelo_var.get().strip().upper(),
                     imeis,
-                    self.logo_path_var.get().strip()
+                    self.cached_logo_pil
                 )
                 
             self.preview_ctk_image = customtkinter.CTkImage(
@@ -1207,6 +1221,25 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def on_imeis_text_change(self, event):
         """Se activa al cambiar el texto de los IMEIs."""
         self.actualizar_contador_imeis()
+        self.schedule_preview_update()
+
+    def cargar_y_cachear_logo(self):
+        """Carga y procesa el logo de forma que esté listo para el renderizado instantáneo en memoria."""
+        path = self.logo_path_var.get().strip()
+        if path and os.path.exists(path):
+            try:
+                # Abrir y convertir a RGBA en memoria
+                with Image.open(path) as img:
+                    self.cached_logo_pil = img.convert("RGBA")
+            except Exception as e:
+                print(f"Error al cachear logo: {e}")
+                self.cached_logo_pil = None
+        else:
+            self.cached_logo_pil = None
+
+    def on_logo_path_change(self, *args):
+        """Recarga el logo en caché y actualiza la previsualización."""
+        self.cargar_y_cachear_logo()
         self.schedule_preview_update()
 
     def buscar_logo(self):
