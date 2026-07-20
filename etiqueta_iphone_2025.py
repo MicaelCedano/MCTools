@@ -16,6 +16,7 @@ Cambios en v3.2.5:
 from PIL import Image, ImageDraw, ImageFont, ImageTk
 import barcode
 from barcode.writer import ImageWriter
+import qrcode
 import io
 import customtkinter
 import tkinter as tk
@@ -45,7 +46,7 @@ except ImportError:
     PDF_SAVE_ENABLED = False
 
 # --- Constantes ---
-VERSION = "2.0"
+VERSION = "2.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "EtiquetaPro"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -183,7 +184,8 @@ def cargar_fuentes_pdf():
         RL_FONT_REGULAR_NAME = 'Helvetica'
 
 # --- FUNCIÓN DE PREVISUALIZACIÓN ---
-def _generar_etiqueta_pil_image(modelo, numero_serie, especificacion, path_logo_pil):
+# --- FUNCIÓN DE PREVISUALIZACIÓN (CÓDIGO DE BARRAS) ---
+def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, path_logo_pil):
     """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
     DPI = 300
     LABEL_WIDTH_PX, LABEL_HEIGHT_PX = int(LABEL_WIDTH_INCHES * DPI), int(LABEL_HEIGHT_INCHES * DPI)
@@ -278,8 +280,8 @@ def _generar_etiqueta_pil_image(modelo, numero_serie, especificacion, path_logo_
             
     return image
 
-# --- FUNCIÓN DE GENERACIÓN DE PDF (REVISADA Y SECUENCIAL) ---
-def _generar_etiqueta_pdf_temporal(modelo, numero_serie, especificacion, path_logo_pil):
+# --- FUNCIÓN DE GENERACIÓN DE PDF (CÓDIGO DE BARRAS) ---
+def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion, path_logo_pil):
     if not PDF_SAVE_ENABLED: return None
     fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_")
     os.close(fd)
@@ -330,7 +332,7 @@ def _generar_etiqueta_pdf_temporal(modelo, numero_serie, especificacion, path_lo
         c.drawCentredString(width / 2, current_y, texto)
         current_y -= 4
 
-    # 3. Dibujar Código de Barras (Sin 'if' de espacio)
+    # 3. Dibujar Código de Barras
     if numero_serie:
         try:
             current_y -= 0.1 * inch
@@ -379,6 +381,249 @@ def _generar_etiqueta_pdf_temporal(modelo, numero_serie, especificacion, path_lo
 
         except Exception as e:
             print(f"Error generando código de barras para PDF: {e}")
+            
+    c.save()
+    return temp_pdf_path
+
+# --- FUNCIONES DE DIBUJO (CÓDIGO QR) ---
+def generar_texto_qr(imeis):
+    """Genera el texto que se incluirá en el código QR con los IMEIs."""
+    return "\n".join([imei.strip() for imei in imeis if imei.strip()])
+
+def _generar_etiqueta_qr_pil_image(modelo, imeis, path_logo_pil):
+    """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
+    DPI = 300
+    LABEL_WIDTH_PX, LABEL_HEIGHT_PX = int(LABEL_WIDTH_INCHES * DPI), int(LABEL_HEIGHT_INCHES * DPI)
+    
+    TOP_MARGIN_PX = int(0.20 * DPI)
+    SIDE_MARGIN_PX = int(0.15 * DPI)
+    BOTTOM_MARGIN_PX = int(0.25 * DPI)  # Aumentado para evitar que se corte el QR
+    
+    image = Image.new("RGB", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), "white")
+    draw = ImageDraw.Draw(image)
+    try:
+        font_bold = ImageFont.truetype(FONT_BOLD_PATH_TTF, size=int(12 * DPI / 72))
+        font_regular = ImageFont.truetype(FONT_REGULAR_PATH_TTF, size=int(10 * DPI / 72))
+    except IOError:
+        font_bold, font_regular = ImageFont.load_default(), ImageFont.load_default()
+    
+    current_y = TOP_MARGIN_PX
+    
+    # 1. Logo
+    if path_logo_pil and os.path.exists(path_logo_pil):
+        try:
+            with Image.open(path_logo_pil) as logo_img:
+                logo_img = logo_img.convert("RGBA")
+                logo_max_width = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
+                logo_max_height = int(0.28 * LABEL_HEIGHT_PX)
+                logo_img.thumbnail((logo_max_width, logo_max_height), Image.Resampling.LANCZOS)
+                
+                logo_x = (LABEL_WIDTH_PX - logo_img.width) // 2
+                image.paste(logo_img, (logo_x, current_y), logo_img)
+                current_y += logo_img.height + int(0.15 * DPI)
+        except Exception as e:
+            print(f"Error procesando logo: {e}")
+
+    # 2. Texto - Modelo con cantidad de equipos
+    imeis_validos = [imei.strip() for imei in imeis if imei.strip()]
+    cantidad_equipos = len(imeis_validos)
+    
+    if modelo.strip():
+        texto_modelo = f"Modelo: {modelo} - QTY {cantidad_equipos}"
+        
+        # Calcular ancho disponible
+        ancho_disponible = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
+        
+        # Verificar si el texto es demasiado largo y ajustar tamaño de fuente
+        texto_font = font_bold
+        texto_largo = draw.textlength(texto_modelo, font=texto_font)
+        
+        if texto_largo > ancho_disponible:
+            for size in [11, 10, 9, 8]:
+                try:
+                    font_ajustado = ImageFont.truetype(FONT_BOLD_PATH_TTF, size=int(size * DPI / 72))
+                except IOError:
+                    font_ajustado = ImageFont.load_default()
+                
+                texto_largo = draw.textlength(texto_modelo, font=font_ajustado)
+                if texto_largo <= ancho_disponible:
+                    texto_font = font_ajustado
+                    break
+        
+        try:
+            bbox = draw.textbbox((0, 0), texto_modelo, font=texto_font)
+            altura_texto = bbox[3] - bbox[1]
+            current_y += int(0.1 * DPI)
+        except:
+            altura_texto = texto_font.size
+            current_y += int(0.1 * DPI)
+        
+        x_pos = (LABEL_WIDTH_PX - draw.textlength(texto_modelo, font=texto_font)) // 2
+        draw.text((x_pos, current_y), texto_modelo, fill="black", font=texto_font)
+        current_y += altura_texto + int(0.05 * DPI)
+
+    # 3. Código QR
+    if imeis_validos:
+        try:
+            padding_before_qr = int(0.05 * DPI)
+            current_y += padding_before_qr
+            
+            espacio_disponible_y = LABEL_HEIGHT_PX - current_y - BOTTOM_MARGIN_PX
+            
+            texto_qr = generar_texto_qr(imeis_validos)
+            
+            qr = qrcode.QRCode(
+                version=None,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=8,
+                border=4,
+            )
+            
+            qr.add_data(texto_qr)
+            qr.make(fit=True)
+            
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            qr_img = qr_img.convert('RGB')
+            
+            max_qr_w = LABEL_WIDTH_PX - 2 * SIDE_MARGIN_PX
+            max_qr_h = espacio_disponible_y - int(0.05 * DPI)
+            
+            ratio_w = max_qr_w / qr_img.width if qr_img.width > max_qr_w else 1.0
+            ratio_h = max_qr_h / qr_img.height if qr_img.height > max_qr_h else 1.0
+            ratio = min(ratio_w, ratio_h)
+            
+            new_width = int(qr_img.width * ratio)
+            new_height = int(qr_img.height * ratio)
+            qr_img = qr_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            if current_y + qr_img.height > LABEL_HEIGHT_PX - BOTTOM_MARGIN_PX:
+                espacio_real = LABEL_HEIGHT_PX - current_y - BOTTOM_MARGIN_PX
+                ratio_ajuste = espacio_real / qr_img.height
+                new_width = int(new_width * ratio_ajuste)
+                new_height = int(new_height * ratio_ajuste)
+                qr_img = qr_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            qr_x = (LABEL_WIDTH_PX - qr_img.width) // 2
+            image.paste(qr_img, (qr_x, current_y))
+            
+        except Exception as e:
+            print(f"Error generando código QR en previsualización: {e}")
+            
+    return image
+
+# --- FUNCIÓN DE GENERACIÓN DE PDF (CÓDIGO QR) ---
+def _generar_etiqueta_qr_pdf_temporal(modelo, imeis, path_logo_pil):
+    if not PDF_SAVE_ENABLED: return None
+    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_qr_")
+    os.close(fd)
+    temporary_files_to_delete.append(temp_pdf_path)
+    
+    c = reportlab_canvas.Canvas(temp_pdf_path, pagesize=(LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch))
+    width, height = LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch
+    
+    margin_top = 0.20 * inch
+    margin_sides = 0.15 * inch
+    margin_bottom = 0.25 * inch
+    
+    current_y = height - margin_top
+
+    # 1. Dibujar Logo
+    try:
+        if path_logo_pil and os.path.exists(path_logo_pil):
+            logo_pil = Image.open(path_logo_pil)
+            logo_max_width_pt = width - 2 * margin_sides
+            logo_max_height_pt = 0.28 * height
+            w_px, h_px = logo_pil.size
+            aspect = h_px / float(w_px) if w_px > 0 else 0
+            logo_w_pt = logo_max_width_pt
+            logo_h_pt = logo_w_pt * aspect
+            if logo_h_pt > logo_max_height_pt:
+                logo_h_pt = logo_max_height_pt
+                logo_w_pt = logo_h_pt / aspect if aspect > 0 else 0
+
+            img_reader = ReportLabImageReader(logo_pil)
+            
+            current_y -= logo_h_pt
+            c.drawImage(img_reader, (width - logo_w_pt) / 2, current_y, width=logo_w_pt, height=logo_h_pt, mask='auto')
+            current_y -= 0.15 * inch
+    except Exception as e:
+        print(f"Error al procesar logo para PDF: {e}")
+
+    # 2. Dibujar Texto - Modelo con cantidad de equipos
+    imeis_validos = [imei.strip() for imei in imeis if imei.strip()]
+    cantidad_equipos = len(imeis_validos)
+    
+    if modelo.strip():
+        texto_modelo = f"Modelo: {modelo} - QTY {cantidad_equipos}"
+        
+        ancho_disponible = width - (2 * margin_sides)
+        
+        font_size = 12
+        c.setFont(RL_FONT_BOLD_NAME, font_size)
+        texto_largo = c.stringWidth(texto_modelo, RL_FONT_BOLD_NAME, font_size)
+        
+        if texto_largo > ancho_disponible:
+            for size in [11, 10, 9, 8]:
+                texto_largo = c.stringWidth(texto_modelo, RL_FONT_BOLD_NAME, size)
+                if texto_largo <= ancho_disponible:
+                    font_size = size
+                    break
+        
+        current_y -= 0.1 * inch
+        current_y -= font_size
+        
+        c.setFont(RL_FONT_BOLD_NAME, font_size)
+        c.drawCentredString(width / 2, current_y, texto_modelo)
+        current_y -= 0.05 * inch
+
+    # 3. Dibujar Código QR
+    if imeis_validos:
+        try:
+            current_y -= 0.05 * inch
+            
+            espacio_disponible_y = current_y - margin_bottom
+            
+            texto_qr = generar_texto_qr(imeis_validos)
+            
+            qr = qrcode.QRCode(
+                version=None,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=8,
+                border=4,
+            )
+            
+            qr.add_data(texto_qr)
+            qr.make(fit=True)
+            
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            qr_img = qr_img.convert('RGB')
+            
+            qr_io = io.BytesIO()
+            qr_img.save(qr_io, format='PNG')
+            qr_io.seek(0)
+            
+            img_reader = ReportLabImageReader(qr_io)
+            qr_w, qr_h = img_reader.getSize()
+            
+            max_qr_w = width - (2 * margin_sides)
+            max_qr_h_pt = espacio_disponible_y - (0.05 * inch)
+            
+            ratio_w = max_qr_w / qr_w if qr_w > max_qr_w else 1.0
+            ratio_h = max_qr_h_pt / qr_h if qr_h > max_qr_h_pt else 1.0
+            ratio = min(ratio_w, ratio_h)
+            
+            qr_w, qr_h = qr_w * ratio, qr_h * ratio
+            
+            if current_y - qr_h < margin_bottom:
+                espacio_real = current_y - margin_bottom
+                ratio_ajuste = espacio_real / qr_h
+                qr_w, qr_h = qr_w * ratio_ajuste, qr_h * ratio_ajuste
+            
+            current_y -= qr_h
+            c.drawImage(img_reader, (width - qr_w) / 2, current_y, width=qr_w, height=qr_h, mask='auto')
+
+        except Exception as e:
+            print(f"Error generando código QR para PDF: {e}")
             
     c.save()
     return temp_pdf_path
@@ -452,8 +697,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Configuración Inicial
         self.title(f"Generador de Etiquetas iPhone v{VERSION}")
-        self.geometry("900x560")  # Slightly wider/higher for comfortable margins
-        self.minsize(900, 560)
+        self.geometry("920x720")  # Aumentado para acomodar el cuadro de texto
+        self.minsize(920, 720)
         self.configure(fg_color="#0F172A")  # Slate-900 Main Window
         
         limpiar_archivos_antiguos()
@@ -465,9 +710,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Crear Frames
-        self.controls_frame = customtkinter.CTkFrame(self, width=320, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
+        self.controls_frame = customtkinter.CTkFrame(self, width=340, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
         self.controls_frame.grid(row=0, column=0, sticky="nsw")
-        self.controls_frame.grid_rowconfigure(3, weight=1)  # Bottom spacer row
+        self.controls_frame.grid_rowconfigure(2, weight=1)  # Expand tabview area
 
         self.preview_frame = customtkinter.CTkFrame(self, fg_color="#1E293B", corner_radius=16, border_width=1, border_color="#334155")
         self.preview_frame.grid(row=0, column=1, padx=25, pady=25, sticky="nsew")
@@ -481,15 +726,17 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Frame de Controles (Izquierda)
         self.controls_frame.grid_columnconfigure(0, weight=1)
         
-        # Variables
+        # Variables Compartidas
         self.modelo_var = tk.StringVar()
-        self.imei_var = tk.StringVar()
         logo_path_inicial = cargar_logo_config()
         self.logo_path_var = tk.StringVar(value=logo_path_inicial)
         
+        # Variables específicas de Pestaña Barcode
+        self.imei_var = tk.StringVar()
+
         # 1. Banner de Encabezado (Logo & Versión)
         header_frame = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
-        header_frame.grid(row=0, column=0, padx=25, pady=(25, 10), sticky="ew")
+        header_frame.grid(row=0, column=0, padx=20, pady=(20, 5), sticky="ew")
         header_frame.grid_columnconfigure(0, weight=1)
         
         title_container = customtkinter.CTkFrame(header_frame, fg_color="transparent")
@@ -523,167 +770,141 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
 
-        # 2. Contenedor de Entradas (Cards)
-        inputs_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
-        inputs_container.grid(row=1, column=0, padx=25, pady=10, sticky="ew")
-        inputs_container.grid_columnconfigure(0, weight=1)
-
-        # Tarjeta de Modelo
-        modelo_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        modelo_card.grid(row=0, column=0, padx=0, pady=(0, 15), sticky="ew")
-        modelo_card.grid_columnconfigure(0, weight=1)
-        
-        customtkinter.CTkLabel(
-            modelo_card, 
-            text="Modelo", 
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            text_color="#94A3B8"
-        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
-        
-        modelo_entry_frame = customtkinter.CTkFrame(modelo_card, fg_color="transparent")
-        modelo_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
-        modelo_entry_frame.grid_columnconfigure(0, weight=1)
-        
-        self.modelo_entry = customtkinter.CTkEntry(
-            modelo_entry_frame, 
-            textvariable=self.modelo_var,
-            placeholder_text="Ej. iPhone 15 Pro Max",
-            fg_color="#1E293B",
-            border_color="#475569",
+        # 2. Pestañas (Tabview)
+        self.tabview = customtkinter.CTkTabview(
+            self.controls_frame, 
+            fg_color="transparent",
+            segmented_button_fg_color="#0F172A",
+            segmented_button_selected_color="#06B6D4",
+            segmented_button_selected_hover_color="#0891B2",
+            segmented_button_unselected_color="#1E293B",
+            segmented_button_unselected_hover_color="#334155",
             text_color="#F8FAFC",
-            placeholder_text_color="#64748B",
-            height=32,
-            corner_radius=8
+            corner_radius=12
         )
-        self.modelo_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        self.tabview.grid(row=1, column=0, padx=15, pady=(5, 5), sticky="nsew")
+        self.tabview.grid_rowconfigure(0, weight=1)
+        self.tabview.grid_columnconfigure(0, weight=1)
         
-        customtkinter.CTkButton(
-            modelo_entry_frame, 
-            text="Pegar", 
-            width=60, 
-            height=32,
-            corner_radius=8,
-            fg_color="#334155",
-            hover_color="#475569",
-            text_color="#F8FAFC",
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            command=self.pegar_modelo
-        ).grid(row=0, column=1, padx=0)
+        self.tab_barcode = self.tabview.add("Código de Barras")
+        self.tab_qr = self.tabview.add("Código QR")
+        
+        # Configure columns inside tabs
+        self.tab_barcode.grid_columnconfigure(0, weight=1)
+        self.tab_qr.grid_columnconfigure(0, weight=1)
 
-        # Tarjeta de IMEI
-        imei_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        imei_card.grid(row=1, column=0, padx=0, pady=(0, 15), sticky="ew")
+        # ---------------- PESTAÑA CÓDIGO DE BARRAS ----------------
+        inputs_barcode = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
+        inputs_barcode.grid(row=0, column=0, sticky="ew")
+        inputs_barcode.grid_columnconfigure(0, weight=1)
+
+        # Tarjeta Modelo (Compartida)
+        modelo_card_bc = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        modelo_card_bc.grid(row=0, column=0, padx=5, pady=(5, 12), sticky="ew")
+        modelo_card_bc.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(modelo_card_bc, text="Modelo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        modelo_entry_frame_bc = customtkinter.CTkFrame(modelo_card_bc, fg_color="transparent")
+        modelo_entry_frame_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        modelo_entry_frame_bc.grid_columnconfigure(0, weight=1)
+        self.modelo_entry_bc = customtkinter.CTkEntry(modelo_entry_frame_bc, textvariable=self.modelo_var, placeholder_text="Ej. iPhone 15 Pro Max", fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", placeholder_text_color="#64748B", height=32, corner_radius=8)
+        self.modelo_entry_bc.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        customtkinter.CTkButton(modelo_entry_frame_bc, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_modelo).grid(row=0, column=1, padx=0)
+
+        # Tarjeta IMEI (Específica Barcode)
+        imei_card = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        imei_card.grid(row=1, column=0, padx=5, pady=(0, 12), sticky="ew")
         imei_card.grid_columnconfigure(0, weight=1)
-        
-        customtkinter.CTkLabel(
-            imei_card, 
-            text="IMEI", 
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            text_color="#94A3B8"
-        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
-        
+        customtkinter.CTkLabel(imei_card, text="IMEI", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
         imei_entry_frame = customtkinter.CTkFrame(imei_card, fg_color="transparent")
-        imei_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
+        imei_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
         imei_entry_frame.grid_columnconfigure(0, weight=1)
-        
-        self.imei_entry = customtkinter.CTkEntry(
-            imei_entry_frame, 
-            textvariable=self.imei_var,
-            placeholder_text="Ej. 350123456789012",
-            fg_color="#1E293B",
-            border_color="#475569",
-            text_color="#F8FAFC",
-            placeholder_text_color="#64748B",
-            height=32,
-            corner_radius=8
-        )
+        self.imei_entry = customtkinter.CTkEntry(imei_entry_frame, textvariable=self.imei_var, placeholder_text="Ej. 350123456789012", fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", placeholder_text_color="#64748B", height=32, corner_radius=8)
         self.imei_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        
-        customtkinter.CTkButton(
-            imei_entry_frame, 
-            text="Pegar", 
-            width=60, 
-            height=32,
-            corner_radius=8,
-            fg_color="#334155",
-            hover_color="#475569",
-            text_color="#F8FAFC",
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            command=self.pegar_imei
-        ).grid(row=0, column=1, padx=0)
+        customtkinter.CTkButton(imei_entry_frame, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_imei).grid(row=0, column=1, padx=0)
 
-        # Tarjeta de Logo
-        logo_card = customtkinter.CTkFrame(inputs_container, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        logo_card.grid(row=2, column=0, padx=0, pady=(0, 20), sticky="ew")
-        logo_card.grid_columnconfigure(0, weight=1)
-        
-        customtkinter.CTkLabel(
-            logo_card, 
-            text="Ruta del Logo", 
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            text_color="#94A3B8"
-        ).grid(row=0, column=0, padx=12, pady=(8, 2), sticky="w")
-        
-        logo_entry_frame = customtkinter.CTkFrame(logo_card, fg_color="transparent")
-        logo_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
-        logo_entry_frame.grid_columnconfigure(0, weight=1)
-        
-        self.logo_entry = customtkinter.CTkEntry(
-            logo_entry_frame, 
-            textvariable=self.logo_path_var,
-            fg_color="#1E293B",
-            border_color="#475569",
-            text_color="#F8FAFC",
-            height=32,
-            corner_radius=8
-        )
-        self.logo_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        
-        customtkinter.CTkButton(
-            logo_entry_frame, 
-            text="Buscar", 
-            width=60, 
-            height=32,
-            corner_radius=8,
-            fg_color="#334155",
-            hover_color="#475569",
-            text_color="#F8FAFC",
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            command=self.buscar_logo
-        ).grid(row=0, column=1, padx=0)
+        # Tarjeta Logo (Compartida)
+        logo_card_bc = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        logo_card_bc.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
+        logo_card_bc.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(logo_card_bc, text="Ruta del Logo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        logo_entry_frame_bc = customtkinter.CTkFrame(logo_card_bc, fg_color="transparent")
+        logo_entry_frame_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        logo_entry_frame_bc.grid_columnconfigure(0, weight=1)
+        self.logo_entry_bc = customtkinter.CTkEntry(logo_entry_frame_bc, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.logo_entry_bc.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        customtkinter.CTkButton(logo_entry_frame_bc, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
 
-        # 3. Contenedor de Botones de Acción
-        actions_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
-        actions_container.grid(row=2, column=0, padx=25, pady=(5, 10), sticky="ew")
-        actions_container.grid_columnconfigure((0, 1), weight=1)
-        
-        customtkinter.CTkButton(
-            actions_container, 
-            text="Guardar PDF", 
-            fg_color="#6366F1",  # Indigo Accent
-            hover_color="#4F46E5",
-            text_color="#FFFFFF",
-            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
-            height=40,
-            corner_radius=10,
-            command=self.generar_y_guardar_pdf
-        ).grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        
-        customtkinter.CTkButton(
-            actions_container, 
-            text="Imprimir", 
-            fg_color="#06B6D4",  # Cyan Accent
-            hover_color="#0891B2",
-            text_color="#FFFFFF",
-            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
-            height=40,
-            corner_radius=10,
-            command=self.imprimir
-        ).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        # Acciones Barcode
+        actions_bc = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
+        actions_bc.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_bc.grid_columnconfigure((0, 1), weight=1)
+        customtkinter.CTkButton(actions_bc, text="Guardar PDF", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.generar_y_guardar_pdf).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        customtkinter.CTkButton(actions_bc, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=1, padx=(6, 0), sticky="ew")
 
-        # 4. Contenedor Inferior (Configuración & Autor)
+
+        # ---------------- PESTAÑA CÓDIGO QR ----------------
+        inputs_qr = customtkinter.CTkFrame(self.tab_qr, fg_color="transparent")
+        inputs_qr.grid(row=0, column=0, sticky="ew")
+        inputs_qr.grid_columnconfigure(0, weight=1)
+
+        # Tarjeta Modelo (Compartida)
+        modelo_card_qr = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        modelo_card_qr.grid(row=0, column=0, padx=5, pady=(5, 12), sticky="ew")
+        modelo_card_qr.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(modelo_card_qr, text="Modelo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        modelo_entry_frame_qr = customtkinter.CTkFrame(modelo_card_qr, fg_color="transparent")
+        modelo_entry_frame_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        modelo_entry_frame_qr.grid_columnconfigure(0, weight=1)
+        self.modelo_entry_qr = customtkinter.CTkEntry(modelo_entry_frame_qr, textvariable=self.modelo_var, placeholder_text="Ej. iPhone 15 Pro Max", fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", placeholder_text_color="#64748B", height=32, corner_radius=8)
+        self.modelo_entry_qr.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        customtkinter.CTkButton(modelo_entry_frame_qr, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_modelo).grid(row=0, column=1, padx=0)
+
+        # Tarjeta IMEIs (Específica QR - Caja de texto grande)
+        imeis_card = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        imeis_card.grid(row=1, column=0, padx=5, pady=(0, 12), sticky="ew")
+        imeis_card.grid_columnconfigure(0, weight=1)
+        
+        imeis_label_frame = customtkinter.CTkFrame(imeis_card, fg_color="transparent")
+        imeis_label_frame.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        imeis_label_frame.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(imeis_label_frame, text="IMEIs (uno por línea)", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        self.imeis_count_label = customtkinter.CTkLabel(imeis_label_frame, text="0 IMEIs", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#64748B")
+        self.imeis_count_label.grid(row=0, column=1, sticky="e")
+        
+        self.imeis_textbox = customtkinter.CTkTextbox(imeis_card, height=140, font=customtkinter.CTkFont(size=11), fg_color="#1E293B", border_color="#475569", border_width=1, text_color="gray", corner_radius=8)
+        self.imeis_textbox.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        self.placeholder_text = "Pegue aquí todos los IMEIs, uno por línea..."
+        self.imeis_textbox.insert("1.0", self.placeholder_text)
+        
+        limpiar_frame = customtkinter.CTkFrame(imeis_card, fg_color="transparent")
+        limpiar_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
+        limpiar_frame.grid_columnconfigure((0, 1), weight=1)
+        customtkinter.CTkButton(limpiar_frame, text="Limpiar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_imeis).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        customtkinter.CTkButton(limpiar_frame, text="Pegar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_imeis).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        # Tarjeta Logo (Compartida)
+        logo_card_qr = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        logo_card_qr.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
+        logo_card_qr.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(logo_card_qr, text="Ruta del Logo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        logo_entry_frame_qr = customtkinter.CTkFrame(logo_card_qr, fg_color="transparent")
+        logo_entry_frame_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        logo_entry_frame_qr.grid_columnconfigure(0, weight=1)
+        self.logo_entry_qr = customtkinter.CTkEntry(logo_entry_frame_qr, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.logo_entry_qr.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        customtkinter.CTkButton(logo_entry_frame_qr, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
+
+        # Acciones QR
+        actions_qr = customtkinter.CTkFrame(self.tab_qr, fg_color="transparent")
+        actions_qr.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_qr.grid_columnconfigure((0, 1), weight=1)
+        customtkinter.CTkButton(actions_qr, text="Guardar PDF", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.generar_y_guardar_pdf).grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        customtkinter.CTkButton(actions_qr, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=1, padx=(6, 0), sticky="ew")
+
+
+        # 3. Contenedor Inferior (Configuración & Autor)
         footer_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
-        footer_container.grid(row=3, column=0, padx=25, pady=(10, 20), sticky="sew")
+        footer_container.grid(row=2, column=0, padx=20, pady=(5, 15), sticky="sew")
         footer_container.grid_columnconfigure(0, weight=1)
         
         # Botón Outline de SumatraPDF
@@ -700,7 +921,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             corner_radius=8,
             command=self.configurar_ruta_sumatra_manualmente
         )
-        self.config_sumatra_btn.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        self.config_sumatra_btn.grid(row=0, column=0, sticky="ew", pady=(0, 10))
         
         # Créditos
         customtkinter.CTkLabel(
@@ -710,20 +931,29 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text_color="#64748B"
         ).grid(row=1, column=0, sticky="w")
 
-        # Frame de Previsualización (Derecha)
+        # Frame de Vista Previa (Derecha)
         self.preview_frame.grid_rowconfigure(0, weight=1)
         self.preview_frame.grid_columnconfigure(0, weight=1)
         self.preview_image_label = customtkinter.CTkLabel(
             self.preview_frame, 
-            text="Vista Previa de la Etiqueta\n\nIngresa el Modelo y el IMEI para generar la previsualización.", 
+            text="Vista Previa de la Etiqueta\n\nIngresa el Modelo y datos para generar la previsualización.", 
             text_color="#94A3B8",
             font=customtkinter.CTkFont(family="Inter", size=13, weight="bold")
         )
         self.preview_image_label.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
 
     def _bind_events(self):
+        # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.logo_path_var]:
             var.trace_add("write", self.schedule_preview_update)
+            
+        # Binds para el cuadro de texto de IMEIs
+        self.imeis_textbox.bind("<KeyRelease>", self.on_imeis_text_change)
+        self.imeis_textbox.bind("<Button-1>", self.on_imeis_click)
+        self.imeis_textbox.bind("<FocusIn>", self.on_imeis_focus_in)
+        
+        # Actualizar cuando cambie la pestaña activa
+        self.tabview.configure(command=self.schedule_preview_update)
 
     def schedule_preview_update(self, *args):
         if self._preview_update_job: self.after_cancel(self._preview_update_job)
@@ -731,13 +961,24 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def force_preview_update(self):
         try:
-            pil_image = _generar_etiqueta_pil_image(
-                self.modelo_var.get().strip().upper(),
-                self.imei_var.get().strip().upper(),
-                "",
-                self.logo_path_var.get().strip()
-            )
+            tab_activa = self.tabview.get()
             
+            if tab_activa == "Código de Barras":
+                pil_image = _generar_etiqueta_barcode_pil_image(
+                    self.modelo_var.get().strip().upper(),
+                    self.imei_var.get().strip().upper(),
+                    "",
+                    self.logo_path_var.get().strip()
+                )
+            else:  # Código QR
+                imeis = self.obtener_imeis_del_texto()
+                self.actualizar_contador_imeis()
+                pil_image = _generar_etiqueta_qr_pil_image(
+                    self.modelo_var.get().strip().upper(),
+                    imeis,
+                    self.logo_path_var.get().strip()
+                )
+                
             self.preview_ctk_image = customtkinter.CTkImage(
                 light_image=pil_image,
                 dark_image=pil_image,
@@ -748,10 +989,21 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         except Exception as e:
             self.preview_image_label.configure(image=None, text=f"Error en preview:\n{e}")
 
-    def generar_y_guardar_pdf(self): self._procesar_generacion(guardar_permanente=True)
-    def imprimir(self): self._procesar_generacion(imprimir_despues=True)
+    def generar_y_guardar_pdf(self):
+        tab_activa = self.tabview.get()
+        if tab_activa == "Código de Barras":
+            self._procesar_generacion_barcode(guardar_permanente=True)
+        else:
+            self._procesar_generacion_qr(guardar_permanente=True)
 
-    def _procesar_generacion(self, guardar_permanente=False, imprimir_despues=False):
+    def imprimir(self):
+        tab_activa = self.tabview.get()
+        if tab_activa == "Código de Barras":
+            self._procesar_generacion_barcode(imprimir_despues=True)
+        else:
+            self._procesar_generacion_qr(imprimir_despues=True)
+
+    def _procesar_generacion_barcode(self, guardar_permanente=False, imprimir_despues=False):
         if not PDF_SAVE_ENABLED:
             messagebox.showerror("Función Deshabilitada", "La librería 'ReportLab' es necesaria para esta función.")
             return
@@ -760,7 +1012,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         if not modelo or not imei:
             messagebox.showerror("Campos Obligatorios", "'Modelo' e 'IMEI' son campos obligatorios.")
             return
-        temp_pdf_path = _generar_etiqueta_pdf_temporal(
+        temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(
             modelo, imei,
             "",
             self.logo_path_var.get().strip()
@@ -768,20 +1020,50 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         if not temp_pdf_path or not os.path.exists(temp_pdf_path):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
             return
+        self._finalizar_generacion(temp_pdf_path, modelo, imei, guardar_permanente, imprimir_despues)
+
+    def _procesar_generacion_qr(self, guardar_permanente=False, imprimir_despues=False):
+        if not PDF_SAVE_ENABLED:
+            messagebox.showerror("Función Deshabilitada", "La librería 'ReportLab' es necesaria para esta función.")
+            return
+        modelo = self.modelo_var.get().strip().upper()
+        imeis = self.obtener_imeis_del_texto()
+        imeis_validos = [imei for imei in imeis if imei.strip()]
+        
+        if not modelo:
+            messagebox.showerror("Campo Obligatorio", "'Modelo' es un campo obligatorio.")
+            return
+        if not imeis_validos:
+            messagebox.showerror("Campo Obligatorio", "Debe ingresar al menos un IMEI.")
+            return
+            
+        temp_pdf_path = _generar_etiqueta_qr_pdf_temporal(
+            modelo,
+            imeis,
+            self.logo_path_var.get().strip()
+        )
+        if not temp_pdf_path or not os.path.exists(temp_pdf_path):
+            messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
+            return
+        self._finalizar_generacion(temp_pdf_path, modelo, "qr", guardar_permanente, imprimir_despues)
+
+    def _finalizar_generacion(self, temp_pdf_path, modelo, identificador, guardar_permanente=False, imprimir_despues=False):
         if guardar_permanente:
             path_salida = filedialog.asksaveasfilename(
                 title="Guardar Etiqueta PDF",
                 defaultextension=".pdf",
-                initialfile=f"etiqueta_{modelo}_{imei}.pdf".replace(" ", "_"),
+                initialfile=f"etiqueta_{modelo}_{identificador}.pdf".replace(" ", "_"),
                 filetypes=[("Archivos PDF", "*.pdf"), ("Todos", "*.*")]
             )
             if path_salida:
                 try:
                     import shutil
                     shutil.move(temp_pdf_path, path_salida)
-                    if temp_pdf_path in temporary_files_to_delete: temporary_files_to_delete.remove(temp_pdf_path)
+                    if temp_pdf_path in temporary_files_to_delete: 
+                        temporary_files_to_delete.remove(temp_pdf_path)
                     messagebox.showinfo("Éxito", f"Etiqueta PDF guardada en:\n'{path_salida}'")
-                except Exception as e: messagebox.showerror("Error al Guardar", f"No se pudo guardar el archivo:\n{e}")
+                except Exception as e: 
+                    messagebox.showerror("Error al Guardar", f"No se pudo guardar el archivo:\n{e}")
         if imprimir_despues: self.imprimir_pdf_directo(temp_pdf_path)
 
     def imprimir_pdf_directo(self, filepath):
@@ -842,8 +1124,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     while "  " in texto_limpio:
                         texto_limpio = texto_limpio.replace("  ", " ")
                 
-                self.modelo_entry.delete(0, tk.END)  # Limpiar todo el contenido anterior
-                self.modelo_entry.insert(0, texto_limpio)  # Insertar el contenido sin color
+                self.modelo_var.set(texto_limpio)
         except tk.TclError:
             messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
 
@@ -852,10 +1133,66 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         try:
             contenido = self.clipboard_get()
             if contenido:
-                self.imei_entry.delete(0, tk.END)  # Limpiar todo el contenido anterior
-                self.imei_entry.insert(0, contenido.strip())  # Insertar el nuevo contenido
+                self.imei_var.set(contenido.strip())
         except tk.TclError:
             messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
+
+    def obtener_imeis_del_texto(self):
+        """Extrae la lista de IMEIs del cuadro de texto, eliminando líneas vacías y el placeholder."""
+        texto = self.imeis_textbox.get("1.0", tk.END).strip()
+        if texto == self.placeholder_text:
+            return []
+        return [line.strip() for line in texto.split("\n") if line.strip()]
+
+    def actualizar_contador_imeis(self):
+        """Actualiza la etiqueta con la cantidad de IMEIs ingresados."""
+        cantidad = len(self.obtener_imeis_del_texto())
+        self.imeis_count_label.configure(text=f"{cantidad} IMEIs")
+
+    def pegar_imeis(self):
+        """Pega el contenido del portapapeles en el cuadro de texto de IMEIs."""
+        try:
+            contenido = self.clipboard_get().strip()
+            if contenido:
+                # Si está el placeholder, limpiarlo
+                texto_actual = self.imeis_textbox.get("1.0", tk.END).strip()
+                if texto_actual == self.placeholder_text:
+                    self.imeis_textbox.delete("1.0", tk.END)
+                    self.imeis_textbox.configure(text_color="#F8FAFC")
+                
+                # Insertar contenido
+                self.imeis_textbox.insert(tk.END, contenido + "\n")
+                self.actualizar_contador_imeis()
+                self.schedule_preview_update()
+        except tk.TclError:
+            messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
+
+    def limpiar_imeis(self):
+        """Limpia el cuadro de texto y restablece el placeholder."""
+        self.imeis_textbox.delete("1.0", tk.END)
+        self.imeis_textbox.insert("1.0", self.placeholder_text)
+        self.imeis_textbox.configure(text_color="gray")
+        self.actualizar_contador_imeis()
+        self.schedule_preview_update()
+
+    def on_imeis_click(self, event):
+        """Limpia el placeholder si el usuario hace clic en el cuadro de texto."""
+        texto_actual = self.imeis_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.placeholder_text:
+            self.imeis_textbox.delete("1.0", tk.END)
+            self.imeis_textbox.configure(text_color="#F8FAFC")
+
+    def on_imeis_focus_in(self, event):
+        """Limpia el placeholder si el cuadro de texto recibe el foco."""
+        texto_actual = self.imeis_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.placeholder_text:
+            self.imeis_textbox.delete("1.0", tk.END)
+            self.imeis_textbox.configure(text_color="#F8FAFC")
+
+    def on_imeis_text_change(self, event):
+        """Se activa al cambiar el texto de los IMEIs."""
+        self.actualizar_contador_imeis()
+        self.schedule_preview_update()
 
     def buscar_logo(self):
         filepath = filedialog.askopenfilename(title="Seleccionar archivo de logo", filetypes=[("Archivos de Imagen", "*.png *.jpg *.jpeg"), ("Todos los archivos", "*.*")])
