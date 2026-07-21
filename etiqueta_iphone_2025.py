@@ -28,6 +28,7 @@ import tempfile
 import atexit
 import json
 import urllib.request
+import re
 import threading
 import sys
 import webbrowser
