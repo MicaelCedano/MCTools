@@ -3,7 +3,170 @@ from tkinter import ttk, messagebox, filedialog, scrolledtext, font as tkfont
 import os
 import re
 import pyperclip
+import json
+import datetime
 from typing import List, Dict, Any, Callable # Agregado Callable
+
+class IMEIHistoryWindow(tk.Toplevel):
+    def __init__(self, parent, theme, on_select_callback):
+        super().__init__(parent)
+        self.title("Historial de IMEIs Procesados")
+        self.geometry("550x450")
+        self.resizable(False, False)
+        self.theme = theme
+        self.on_select_callback = on_select_callback
+        
+        self.transient(parent)
+        self.grab_set()
+        self.focus()
+        
+        self.configure(bg=theme["bg"])
+        
+        # Header
+        header_frame = tk.Frame(self, bg=theme.get("status_bar_bg", "grey"), height=60)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        
+        title_label = tk.Label(
+            header_frame, 
+            text="Historial de Procesos", 
+            font=("Arial", 12, "bold"),
+            bg=theme.get("status_bar_bg", "grey"),
+            fg=theme.get("info_fg", "blue")
+        )
+        title_label.pack(pady=15, padx=20, side=tk.LEFT)
+        
+        # Scrollable Canvas frame
+        self.canvas = tk.Canvas(self, bg=theme["bg"], highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = tk.Frame(self.canvas, bg=theme["bg"])
+        
+        self.scrollable_frame_window = self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(
+                scrollregion=self.canvas.bbox("all")
+            )
+        )
+        self.canvas.bind('<Configure>', lambda e: self.canvas.itemconfig(self.scrollable_frame_window, width=e.width))
+        
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        self.canvas.pack(side="left", fill="both", expand=True, padx=15, pady=15)
+        self.scrollbar.pack(side="right", fill="y", pady=15)
+        
+        self.cargar_historial()
+
+    def cargar_historial(self):
+        # Limpiar frame
+        for child in self.scrollable_frame.winfo_children():
+            child.destroy()
+            
+        config = self.read_config()
+        historial = config.get("imei_history", [])
+        
+        if not historial:
+            no_history_label = tk.Label(
+                self.scrollable_frame,
+                text="No hay registros en el historial.",
+                font=("Arial", 10, "italic"),
+                bg=self.theme["bg"],
+                fg=self.theme["label_fg"]
+            )
+            no_history_label.pack(pady=40)
+            return
+            
+        for index, reg in enumerate(historial):
+            # Tarjeta de registro
+            card = tk.Frame(
+                self.scrollable_frame,
+                bg=self.theme["text_bg"],
+                bd=1,
+                relief=tk.SOLID
+            )
+            card.pack(fill=tk.X, pady=6, padx=5, ipady=5)
+            
+            # Textos de la tarjeta
+            info_frame = tk.Frame(card, bg=self.theme["text_bg"])
+            info_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=12, pady=5)
+            
+            time_label = tk.Label(
+                info_frame,
+                text=reg.get("timestamp", "Fecha desconocida"),
+                font=("Arial", 9, "bold"),
+                bg=self.theme["text_bg"],
+                fg=self.theme["label_fg"]
+            )
+            time_label.pack(anchor="w")
+            
+            detalles = f"IMEIs extraídos: {reg.get('count', 0)}"
+            if reg.get("preview"):
+                detalles += f" ({reg.get('preview')})"
+                
+            details_label = tk.Label(
+                info_frame,
+                text=detalles,
+                font=("Arial", 9),
+                bg=self.theme["text_bg"],
+                fg=self.theme["text_fg"]
+            )
+            details_label.pack(anchor="w", pady=(2, 0))
+            
+            # Botones
+            btn_frame = tk.Frame(card, bg=self.theme["text_bg"])
+            btn_frame.pack(side=tk.RIGHT, padx=12, pady=5)
+            
+            importar_btn = tk.Button(
+                btn_frame,
+                text="Importar",
+                font=("Arial", 9, "bold"),
+                bg=self.theme.get("button_secondary_bg", "blue"),
+                fg=self.theme.get("button_secondary_fg", "white"),
+                activebackground=self.theme.get("button_active_bg", "darkgrey"),
+                command=lambda r=reg: self.seleccionar_registro(r)
+            )
+            importar_btn.pack(side=tk.LEFT, padx=3)
+            
+            eliminar_btn = tk.Button(
+                btn_frame,
+                text="Borrar",
+                font=("Arial", 9, "bold"),
+                bg="red",
+                fg="white",
+                activebackground="darkred",
+                command=lambda idx=index: self.eliminar_registro(idx)
+            )
+            eliminar_btn.pack(side=tk.LEFT, padx=3)
+
+    def seleccionar_registro(self, registro):
+        self.on_select_callback(registro.get("input_text", ""))
+        self.grab_release()
+        self.destroy()
+        
+    def eliminar_registro(self, index):
+        config = self.read_config()
+        historial = config.get("imei_history", [])
+        if 0 <= index < len(historial):
+            historial.pop(index)
+            config["imei_history"] = historial
+            self.write_config(config)
+            self.cargar_historial()
+
+    def read_config(self):
+        if os.path.exists("etiqueta_config.json"):
+            with open("etiqueta_config.json", 'r', encoding='utf-8') as f:
+                try:
+                    return json.load(f)
+                except Exception:
+                    return {}
+        return {}
+
+    def write_config(self, config_data):
+        try:
+            with open("etiqueta_config.json", 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4)
+        except Exception as e:
+            print(f"Error al guardar configuración: {e}")
 
 class IMEIProcessorApp:
     def __init__(self, parent_frame: ttk.Frame, main_app_instance: Any, update_save_menu_callback: Callable[[str], None]): # Añadido callback
@@ -58,12 +221,17 @@ class IMEIProcessorApp:
                                        relief=tk.RAISED, borderwidth=2)
         self.clear_button.pack(side=tk.LEFT, padx=5)
 
+        self.history_button = tk.Button(self.action_buttons_frame, text="Ver Historial",
+                                         command=self.show_history, font=self.bold_font,
+                                         relief=tk.RAISED, borderwidth=2)
+        self.history_button.pack(side=tk.LEFT, padx=5)
+
         self.output_frame = tk.Frame(self.parent_frame, pady=5)
         self.output_frame.pack(fill=tk.X, padx=10)
         self.output_label = tk.Label(self.output_frame, text="IMEIs únicos encontrados:")
         self.output_label.pack(side=tk.LEFT, padx=5)
         self.output_text_area = scrolledtext.ScrolledText(self.parent_frame, wrap=tk.WORD, height=10, width=70,
-                                                          state=tk.DISABLED, font=self.default_font)
+                                                           state=tk.DISABLED, font=self.default_font)
         self.output_text_area.pack(padx=10, pady=(0,5), fill=tk.BOTH, expand=True)
 
         self.imei_count_label = tk.Label(self.parent_frame, text="IMEIs únicos encontrados: 0", font=("Arial", 10, "italic"))
@@ -81,6 +249,7 @@ class IMEIProcessorApp:
             self.input_frame, self.input_label, self.input_text_area,
             self.options_actions_frame, self.omit_imeis_checkbutton,
             self.action_buttons_frame, self.process_button, self.clear_button,
+            self.history_button,
             self.output_frame, self.output_label, self.output_text_area,
             self.imei_count_label, self.copy_button, self.status_label
         ]
@@ -104,6 +273,7 @@ class IMEIProcessorApp:
         self.action_buttons_frame.config(bg=theme["bg"])
         self.process_button.config(bg=theme["button_bg"], fg=theme["button_fg"], activebackground=theme["button_active_bg"])
         self.clear_button.config(bg=theme["button_clear_bg"], fg=theme["button_clear_fg"], activebackground=theme.get("button_clear_active_bg", theme["button_active_bg"]))
+        self.history_button.config(bg=theme.get("button_secondary_bg", "blue"), fg=theme.get("button_secondary_fg", "white"), activebackground=theme.get("button_active_bg", "darkgrey"))
 
         self.output_frame.config(bg=theme["bg"])
         self.output_label.config(bg=theme["bg"], fg=theme["label_fg"])
@@ -188,6 +358,8 @@ class IMEIProcessorApp:
             if omit_option_active:
                 status_message += " (Omitiendo posiciones pares)"
             self.status_label.config(text=status_message + " Listos para copiar.")
+            # Guardar en historial
+            self.save_to_history(input_text_content, len(unique_extracted_imeis), unique_extracted_imeis)
         else:
             self.output_text_area.insert(tk.END, "No se encontraron IMEIs válidos.")
             self.copy_button.config(state=tk.DISABLED)
@@ -201,34 +373,63 @@ class IMEIProcessorApp:
         self.update_status_styling()
         self.output_text_area.config(state=tk.DISABLED)
 
-    def import_from_txt(self):
-        try:
-            default_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-            if not os.path.isdir(default_dir): default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
-            if not os.path.isdir(default_dir): default_dir = os.getcwd()
+    def save_to_history(self, raw_text, count, unique_imeis):
+        if not raw_text or raw_text.strip() == "":
+            return
+        
+        # Generar un preview corto (primeros 3 IMEIs)
+        preview = ", ".join(unique_imeis[:3])
+        if len(unique_imeis) > 3:
+            preview += "..."
+            
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        nuevo_registro = {
+            "timestamp": now_str,
+            "input_text": raw_text,
+            "count": count,
+            "preview": preview
+        }
+        
+        config = self.read_config_history()
+        historial = config.get("imei_history", [])
+        
+        if historial and historial[0].get("input_text") == raw_text:
+            return
+            
+        historial.insert(0, nuevo_registro)
+        historial = historial[:10]
+        
+        config["imei_history"] = historial
+        self.write_config_history(config)
 
-            filepath = filedialog.askopenfilename(
-                initialdir=default_dir,
-                title="Importar IMEIs desde archivo TXT",
-                filetypes=(("Archivos de Texto", "*.txt"), ("Todos los archivos", "*.*")),
-                parent=self.root_toplevel
-            )
-            if filepath:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    content = f.read()
-                self.input_text_area.delete("1.0", tk.END)
-                self.input_text_area.insert("1.0", content)
-                self.status_label.config(text=f"Archivo '{os.path.basename(filepath)}' cargado. Procesando...")
-                self.update_status_styling()
-                self.root_toplevel.update_idletasks()
-                self.process_and_display_imeis()
-            else:
-                self.status_label.config(text="Importación cancelada.")
-                self.update_status_styling()
+    def read_config_history(self):
+        if os.path.exists("etiqueta_config.json"):
+            with open("etiqueta_config.json", 'r', encoding='utf-8') as f:
+                try:
+                    return json.load(f)
+                except Exception:
+                    return {}
+        return {}
+
+    def write_config_history(self, config_data):
+        try:
+            with open("etiqueta_config.json", 'w', encoding='utf-8') as f:
+                json.dump(config_data, f, indent=4)
         except Exception as e:
-            messagebox.showerror("Error al Importar", f"No se pudo leer el archivo.\nError: {e}", parent=self.root_toplevel)
-            self.status_label.config(text="Error al leer archivo.")
-            self.update_status_styling()
+            print(f"Error al guardar configuración: {e}")
+
+    def restore_from_history(self, raw_text):
+        self.input_text_area.delete("1.0", tk.END)
+        self.input_text_area.insert("1.0", raw_text)
+        self.process_and_display_imeis()
+
+    def show_history(self):
+        if hasattr(self, 'history_window') and self.history_window.winfo_exists():
+            self.history_window.focus()
+            return
+        self.history_window = IMEIHistoryWindow(self.root_toplevel, self.theme, self.restore_from_history)
 
 
     def copy_imeis_to_clipboard(self):
@@ -331,7 +532,7 @@ class IMEIProcessorApp:
 #     # Add some example menu items for testing import/save
 #     menubar = tk.Menu(root)
 #     filemenu = tk.Menu(menubar, tearoff=0)
-#     filemenu.add_command(label="Importar TXT...", command=app_instance.import_from_txt)
+#     filemenu.add_command(label="Ver Historial...", command=app_instance.show_history)
 #     filemenu.add_command(label="Guardar TXT...", command=app_instance.save_imeis_to_txt)
 #     menubar.add_cascade(label="Archivo", menu=filemenu)
 #     root.config(menu=menubar)

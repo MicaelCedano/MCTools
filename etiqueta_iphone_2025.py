@@ -851,6 +851,145 @@ class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
         self.progress_bar.set(valor)
         self.status_label.configure(text=texto_status)
 
+class IMEIHistoryWindow(customtkinter.CTkToplevel):
+    def __init__(self, parent, on_select_callback):
+        super().__init__(parent)
+        self.title("Historial de IMEIs Procesados")
+        self.geometry("550x450")
+        self.resizable(False, False)
+        self.on_select_callback = on_select_callback
+        
+        # Asegurarnos de que aparezca al frente
+        self.transient(parent)
+        self.grab_set()
+        self.focus()
+        
+        # Configurar colores
+        self.configure(fg_color="#0F172A")
+        
+        # Header
+        header_frame = customtkinter.CTkFrame(self, fg_color="#1E293B", height=60, corner_radius=0)
+        header_frame.pack(fill=tk.X, side=tk.TOP)
+        
+        title_label = customtkinter.CTkLabel(
+            header_frame, 
+            text="Historial de Procesos", 
+            font=customtkinter.CTkFont(family="Inter", size=16, weight="bold"),
+            text_color="#06B6D4"
+        )
+        title_label.pack(pady=15, padx=20, side=tk.LEFT)
+        
+        # Scrollable Frame para la lista de historial
+        self.scrollable_frame = customtkinter.CTkScrollableFrame(
+            self,
+            fg_color="transparent",
+            scrollbar_button_color="#334155",
+            scrollbar_button_hover_color="#475569"
+        )
+        self.scrollable_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        self.cargar_historial()
+
+    def cargar_historial(self):
+        # Limpiar frame
+        for child in self.scrollable_frame.winfo_children():
+            child.destroy()
+            
+        config = _read_config()
+        historial = config.get("imei_history", [])
+        
+        if not historial:
+            no_history_label = customtkinter.CTkLabel(
+                self.scrollable_frame,
+                text="No hay registros en el historial.",
+                font=customtkinter.CTkFont(family="Inter", size=13, slant="italic"),
+                text_color="#64748B"
+            )
+            no_history_label.pack(pady=40)
+            return
+            
+        for index, reg in enumerate(historial):
+            # Tarjeta de registro
+            card = customtkinter.CTkFrame(
+                self.scrollable_frame,
+                fg_color="#1E293B",
+                border_width=1,
+                border_color="#334155",
+                corner_radius=10
+            )
+            card.pack(fill=tk.X, pady=6, padx=5)
+            card.columnconfigure(0, weight=1)
+            
+            # Textos de la tarjeta
+            info_frame = customtkinter.CTkFrame(card, fg_color="transparent")
+            info_frame.grid(row=0, column=0, padx=12, pady=10, sticky="w")
+            
+            time_label = customtkinter.CTkLabel(
+                info_frame,
+                text=reg.get("timestamp", "Fecha desconocida"),
+                font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+                text_color="#94A3B8"
+            )
+            time_label.pack(anchor="w")
+            
+            detalles = f"IMEIs extraídos: {reg.get('count', 0)}"
+            if reg.get("preview"):
+                detalles += f" ({reg.get('preview')})"
+                
+            details_label = customtkinter.CTkLabel(
+                info_frame,
+                text=detalles,
+                font=customtkinter.CTkFont(family="Inter", size=11),
+                text_color="#F8FAFC"
+            )
+            details_label.pack(anchor="w", pady=(2, 0))
+            
+            # Botones
+            btn_frame = customtkinter.CTkFrame(card, fg_color="transparent")
+            btn_frame.grid(row=0, column=1, padx=12, pady=10, sticky="e")
+            
+            importar_btn = customtkinter.CTkButton(
+                btn_frame,
+                text="Importar",
+                width=80,
+                height=28,
+                corner_radius=6,
+                fg_color="#06B6D4",
+                hover_color="#0891B2",
+                text_color="#FFFFFF",
+                font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+                command=lambda r=reg: self.seleccionar_registro(r)
+            )
+            importar_btn.pack(side=tk.LEFT, padx=3)
+            
+            eliminar_btn = customtkinter.CTkButton(
+                btn_frame,
+                text="Borrar",
+                width=60,
+                height=28,
+                corner_radius=6,
+                fg_color="#EF4444",
+                hover_color="#DC2626",
+                text_color="#FFFFFF",
+                font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+                command=lambda idx=index: self.eliminar_registro(idx)
+            )
+            eliminar_btn.pack(side=tk.LEFT, padx=3)
+
+    def seleccionar_registro(self, registro):
+        self.on_select_callback(registro.get("input_text", ""))
+        self.grab_release()
+        self.destroy()
+        
+    def eliminar_registro(self, index):
+        config = _read_config()
+        historial = config.get("imei_history", [])
+        if 0 <= index < len(historial):
+            historial.pop(index)
+            config["imei_history"] = historial
+            _write_config(config)
+            self.cargar_historial()
+
 # --- Clase Principal de la Aplicación ---
 class AppGeneradorEtiquetas(customtkinter.CTk):
     def __init__(self):
@@ -1152,14 +1291,14 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         customtkinter.CTkButton(
             limpiar_importar_frame,
-            text="Importar TXT",
+            text="Ver Historial",
             fg_color="#334155",
             hover_color="#475569",
             text_color="#F8FAFC",
             font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
             height=32,
             corner_radius=8,
-            command=self.proc_importar_txt
+            command=self.proc_mostrar_historial
         ).grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
 
@@ -1605,6 +1744,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.proc_count_label.configure(text=f"{len(imeis_unicos)} IMEIs")
             self.proc_copy_btn.configure(state="normal")
             self.proc_save_btn.configure(state="normal")
+            # Guardar en el historial
+            self.proc_guardar_en_historial(texto_crudo, len(imeis_unicos), imeis_unicos)
         else:
             self.proc_output_textbox.insert("1.0", "No se encontraron IMEIs válidos.")
             self.proc_count_label.configure(text="0 IMEIs")
@@ -1628,33 +1769,55 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.proc_save_btn.configure(state="disabled")
         self.proc_input_textbox.focus_set()
 
-    def proc_importar_txt(self):
-        """Abre un archivo de texto e importa su contenido en el procesador."""
-        try:
-            default_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-            if not os.path.isdir(default_dir): 
-                default_dir = os.path.join(os.path.expanduser("~"), "Desktop")
-            if not os.path.isdir(default_dir): 
-                default_dir = os.getcwd()
+    def proc_guardar_en_historial(self, texto_crudo, count, imeis_unicos):
+        """Guarda un proceso de IMEIs en el historial de la configuración."""
+        if not texto_crudo or texto_crudo == self.proc_placeholder_text:
+            return
+        
+        # Generar un preview corto (primeros 3 IMEIs)
+        preview = ", ".join(imeis_unicos[:3])
+        if len(imeis_unicos) > 3:
+            preview += "..."
+            
+        import datetime
+        now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        nuevo_registro = {
+            "timestamp": now_str,
+            "input_text": texto_crudo,
+            "count": count,
+            "preview": preview
+        }
+        
+        config = _read_config()
+        historial = config.get("imei_history", [])
+        
+        # Evitar duplicar el mismo texto crudo si es el último procesado
+        if historial and historial[0].get("input_text") == texto_crudo:
+            return
+            
+        historial.insert(0, nuevo_registro)
+        # Mantener al menos los últimos 10 procesos
+        historial = historial[:10]
+        
+        config["imei_history"] = historial
+        _write_config(config)
 
-            filepath = filedialog.askopenfilename(
-                initialdir=default_dir,
-                title="Importar IMEIs desde archivo TXT",
-                filetypes=(("Archivos de Texto", "*.txt"), ("Todos los archivos", "*.*")),
-                parent=self
-            )
-            if filepath:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    content = f.read()
-                
-                self.proc_input_textbox.delete("1.0", tk.END)
-                self.proc_input_textbox.insert("1.0", content)
-                self.proc_input_textbox.configure(text_color="#F8FAFC")
-                
-                # Procesar automáticamente al importar
-                self.proc_extraer_imeis()
-        except Exception as e:
-            messagebox.showerror("Error al Importar", f"No se pudo leer el archivo.\nError: {e}", parent=self)
+    def proc_restaurar_desde_historial(self, texto_crudo):
+        """Restaura el texto crudo del historial y lo procesa."""
+        self.proc_input_textbox.delete("1.0", tk.END)
+        self.proc_input_textbox.insert("1.0", texto_crudo)
+        self.proc_input_textbox.configure(text_color="#F8FAFC")
+        self.proc_extraer_imeis()
+
+    def proc_mostrar_historial(self):
+        """Abre la ventana emergente con el historial de procesos de IMEIs."""
+        # Cerrar ventana si ya está abierta
+        if hasattr(self, 'historial_window') and self.historial_window.winfo_exists():
+            self.historial_window.focus()
+            return
+            
+        self.historial_window = IMEIHistoryWindow(self, self.proc_restaurar_desde_historial)
 
     def proc_copiar_portapapeles(self):
         """Copia la salida del procesador de IMEIs al portapapeles."""
