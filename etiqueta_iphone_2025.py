@@ -56,7 +56,7 @@ def corregir_directorio_trabajo():
 corregir_directorio_trabajo()
 
 # --- Constantes ---
-VERSION = "3.2.3"
+VERSION = "3.3"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -862,7 +862,8 @@ class IMEIHistoryWindow(customtkinter.CTkToplevel):
         # Asegurarnos de que aparezca al frente
         self.transient(parent)
         self.grab_set()
-        self.focus()
+        self.lift()
+        self.focus_force()
         
         # Configurar colores
         self.configure(fg_color="#0F172A")
@@ -918,7 +919,7 @@ class IMEIHistoryWindow(customtkinter.CTkToplevel):
                 corner_radius=10
             )
             card.pack(fill=tk.X, pady=6, padx=5)
-            card.columnconfigure(0, weight=1)
+            card.grid_columnconfigure(0, weight=1)
             
             # Textos de la tarjeta
             info_frame = customtkinter.CTkFrame(card, fg_color="transparent")
@@ -1812,10 +1813,13 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def proc_mostrar_historial(self):
         """Abre la ventana emergente con el historial de procesos de IMEIs."""
-        # Cerrar ventana si ya está abierta
-        if hasattr(self, 'historial_window') and self.historial_window.winfo_exists():
-            self.historial_window.focus()
-            return
+        try:
+            if hasattr(self, 'historial_window') and self.historial_window and self.historial_window.winfo_exists():
+                self.historial_window.lift()
+                self.historial_window.focus_force()
+                return
+        except Exception:
+            pass
             
         self.historial_window = IMEIHistoryWindow(self, self.proc_restaurar_desde_historial)
 
