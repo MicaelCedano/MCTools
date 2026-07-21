@@ -1831,7 +1831,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             try:
                 self.clipboard_clear()
                 self.clipboard_append(texto_salida)
-                messagebox.showinfo("Copiado", "¡IMEIs únicos copiados al portapapeles con éxito!", parent=self)
+                
+                # Feedback moderno temporizado sin popup
+                self.proc_copy_btn.configure(text="¡Copiado!", fg_color="#10B981", hover_color="#059669")
+                self.after(1500, lambda: self.proc_copy_btn.configure(text="Copiar al Portapapeles", fg_color="#06B6D4", hover_color="#0891B2"))
             except Exception as e:
                 messagebox.showerror("Error al Copiar", f"No se pudo copiar al portapapeles:\n{e}", parent=self)
 

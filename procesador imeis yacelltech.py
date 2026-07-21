@@ -438,6 +438,12 @@ class IMEIProcessorApp:
             try:
                 pyperclip.copy(imeis_to_copy)
                 self.status_label.config(text="¡IMEIs copiados al portapapeles!")
+                
+                # Feedback moderno temporizado sin popup
+                original_text = self.copy_button.cget("text")
+                original_bg = self.copy_button.cget("bg")
+                self.copy_button.config(text="¡Copiado!", bg="#10B981")
+                self.parent_frame.after(1500, lambda: self.copy_button.config(text=original_text, bg=original_bg))
             except pyperclip.PyperclipException:
                 messagebox.showerror("Error al Copiar",
                                      "No se pudo acceder al portapapeles. Revisa la instalación de 'pyperclip' y sus dependencias (xclip/xsel en Linux).",
