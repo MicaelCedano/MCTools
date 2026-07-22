@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.13"
+VERSION = "3.3.14"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2481,11 +2481,17 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             bat_path = os.path.join(temp_dir, "mctools_updater.bat")
             vbs_path = os.path.join(temp_dir, "mctools_launcher.vbs")
             
+            exe_basename = os.path.basename(current_exe)
             bat_lines = [
                 "@echo off",
-                ":retry",
+                ":wait_exit",
                 "ping 127.0.0.1 -n 2 >nul",
-                f'copy /Y "{new_exe}" "{current_exe}" >nul 2>&1 || goto retry',
+                f'tasklist /FI "IMAGENAME eq {exe_basename}" 2>nul | find /I "{exe_basename}" >nul',
+                "if not errorlevel 1 goto wait_exit",
+                "ping 127.0.0.1 -n 3 >nul",
+                ":retry_copy",
+                f'copy /Y "{new_exe}" "{current_exe}" >nul 2>&1 || goto retry_copy',
+                "ping 127.0.0.1 -n 2 >nul",
                 f'start "" "{current_exe}"',
                 "ping 127.0.0.1 -n 2 >nul",
                 f'if exist "{vbs_path}" del /F /Q "{vbs_path}" >nul 2>&1',

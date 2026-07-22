@@ -1,11 +1,18 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 import customtkinter
-import PIL
+import sys
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
 
 datas = [('logo.ico', '.'), ('logo.png', '.')]
 binaries = []
+
+# Incluir explícitamente las DLLs del runtime de Python (python314.dll, vcruntime140.dll)
+py_dir = os.path.dirname(sys.executable)
+for dll_file in ['python3.dll', 'python314.dll', 'vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll']:
+    full_dll_path = os.path.join(py_dir, dll_file)
+    if os.path.exists(full_dll_path):
+        binaries.append((full_dll_path, '.'))
 hiddenimports = [
     'PIL',
     'PIL._imagingtk',
