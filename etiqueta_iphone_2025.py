@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.4.3"
+VERSION = "3.4.4"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -283,6 +283,17 @@ def guardar_logo_config(logo_path):
         config = _read_config()
         config["logo_path"] = logo_path
         _write_config(config)
+
+def cargar_logo_enabled_config():
+    """Carga la preferencia de si el logo está activado o no."""
+    config = _read_config()
+    return config.get("logo_enabled", True)
+
+def guardar_logo_enabled_config(enabled):
+    """Guarda la preferencia de activación del logo en la configuración."""
+    config = _read_config()
+    config["logo_enabled"] = bool(enabled)
+    _write_config(config)
 
 def cargar_impresora_config():
     """Carga el nombre de la impresora guardada en la configuración."""
@@ -1324,6 +1335,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.modelo_var = tk.StringVar()
         logo_path_inicial = cargar_logo_config()
         self.logo_path_var = tk.StringVar(value=logo_path_inicial)
+        self.logo_enabled_var = tk.BooleanVar(value=cargar_logo_enabled_config())
         
         # Variables específicas de Pestaña Barcode
         self.imei_var = tk.StringVar()
@@ -1461,7 +1473,26 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_card_bc = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
         logo_card_bc.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
         logo_card_bc.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(logo_card_bc, text="Ruta del Logo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        
+        logo_header_bc = customtkinter.CTkFrame(logo_card_bc, fg_color="transparent")
+        logo_header_bc.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        logo_header_bc.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(logo_header_bc, text="Logo en Etiqueta", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        
+        self.logo_switch_bc = customtkinter.CTkSwitch(
+            logo_header_bc,
+            text="Activado" if self.logo_enabled_var.get() else "Desactivado",
+            variable=self.logo_enabled_var,
+            onvalue=True,
+            offvalue=False,
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#10B981" if self.logo_enabled_var.get() else "#64748B",
+            progress_color="#10B981",
+            command=self.al_cambiar_switch_logo
+        )
+        self.logo_switch_bc.grid(row=0, column=1, sticky="e")
+
         logo_entry_frame_bc = customtkinter.CTkFrame(logo_card_bc, fg_color="transparent")
         logo_entry_frame_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
         logo_entry_frame_bc.grid_columnconfigure(0, weight=1)
@@ -1537,7 +1568,26 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_card_qr = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
         logo_card_qr.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
         logo_card_qr.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(logo_card_qr, text="Ruta del Logo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+
+        logo_header_qr = customtkinter.CTkFrame(logo_card_qr, fg_color="transparent")
+        logo_header_qr.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        logo_header_qr.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(logo_header_qr, text="Logo en Etiqueta", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+
+        self.logo_switch_qr = customtkinter.CTkSwitch(
+            logo_header_qr,
+            text="Activado" if self.logo_enabled_var.get() else "Desactivado",
+            variable=self.logo_enabled_var,
+            onvalue=True,
+            offvalue=False,
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#10B981" if self.logo_enabled_var.get() else "#64748B",
+            progress_color="#10B981",
+            command=self.al_cambiar_switch_logo
+        )
+        self.logo_switch_qr.grid(row=0, column=1, sticky="e")
+
         logo_entry_frame_qr = customtkinter.CTkFrame(logo_card_qr, fg_color="transparent")
         logo_entry_frame_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
         logo_entry_frame_qr.grid_columnconfigure(0, weight=1)
@@ -1836,10 +1886,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         if not modelo or not imei:
             messagebox.showerror("Campos Obligatorios", "'Modelo' e 'IMEI' son campos obligatorios.")
             return
+        path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
         temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(
             modelo, imei,
             "",
-            self.logo_path_var.get().strip()
+            path_logo_pdf
         )
         if not temp_pdf_path or not os.path.exists(temp_pdf_path):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
@@ -1861,10 +1912,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             messagebox.showerror("Campo Obligatorio", "Debe ingresar al menos un IMEI.")
             return
             
+        path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
         temp_pdf_path = _generar_etiqueta_qr_pdf_temporal(
             modelo,
             imeis,
-            self.logo_path_var.get().strip()
+            path_logo_pdf
         )
         if not temp_pdf_path or not os.path.exists(temp_pdf_path):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
@@ -2356,6 +2408,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def cargar_y_cachear_logo(self):
         """Carga y procesa el logo de forma que esté listo para el renderizado instantáneo en memoria."""
+        if hasattr(self, 'logo_enabled_var') and not self.logo_enabled_var.get():
+            self.cached_logo_pil = None
+            return
+
         path = self.logo_path_var.get().strip()
         if path and os.path.exists(path):
             try:
@@ -2367,6 +2423,21 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.cached_logo_pil = None
         else:
             self.cached_logo_pil = None
+
+    def al_cambiar_switch_logo(self):
+        """Maneja el evento de cambio en el switch para activar o desactivar el logo."""
+        estado = self.logo_enabled_var.get()
+        guardar_logo_enabled_config(estado)
+        texto_estado = "Activado" if estado else "Desactivado"
+        color_texto = "#10B981" if estado else "#64748B"
+
+        if hasattr(self, 'logo_switch_bc'):
+            self.logo_switch_bc.configure(text=texto_estado, text_color=color_texto)
+        if hasattr(self, 'logo_switch_qr'):
+            self.logo_switch_qr.configure(text=texto_estado, text_color=color_texto)
+
+        self.cargar_y_cachear_logo()
+        self.schedule_preview_update()
 
     def on_logo_path_change(self, *args):
         """Recarga el logo en caché y actualiza la previsualización."""
