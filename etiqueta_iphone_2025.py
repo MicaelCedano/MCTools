@@ -63,9 +63,9 @@ corregir_directorio_trabajo()
 def pil_to_tk_image_safe(pil_img, size=None):
     """
     Convierte una imagen PIL a un objeto de imagen compatible con CustomTkinter/Tkinter.
-    Intenta primero usar CustomTkinter CTkImage. Si falla (por ejemplo, si falta PIL._imagingtk
-    o da ImportError en la máquina del usuario), realiza un fallback transparente a tk.PhotoImage
-    usando bytes PNG o PPM en memoria, lo cual funciona en Tcl/Tk nativo sin necesidad de _imagingtk.
+    Prueba activamente la disponibilidad de PIL._imagingtk. Si no está disponible o falla
+    en el ejecutable congelado, realiza un fallback transparente e infalible a tk.PhotoImage
+    usando bytes PNG o PPM en memoria (Tcl/Tk nativo sin necesidad de _imagingtk).
     """
     if pil_img is None:
         return None
@@ -74,13 +74,24 @@ def pil_to_tk_image_safe(pil_img, size=None):
     else:
         img_resized = pil_img
 
-    # 1. Intentar CustomTkinter CTkImage (soporta escalado HDPI)
+    # 1. Probar si PIL._imagingtk / PIL.ImageTk funciona en este ejecutable
+    has_imagingtk = False
     try:
-        return customtkinter.CTkImage(light_image=img_resized, dark_image=img_resized, size=img_resized.size)
+        from PIL import _imagingtk, ImageTk
+        test_img = Image.new("RGB", (1, 1))
+        _ = ImageTk.PhotoImage(test_img)
+        has_imagingtk = True
     except Exception as e:
-        print(f"Aviso: CTkImage falló ({e}), usando fallback nativo PNG/PPM...")
+        print(f"Aviso: PIL._imagingtk no funcional ({e}), usando fallback PNG nativo...")
+        has_imagingtk = False
 
-    # 2. Fallback PNG con tk.PhotoImage (Tcl/Tk 8.6+ nativo)
+    if has_imagingtk:
+        try:
+            return customtkinter.CTkImage(light_image=img_resized, dark_image=img_resized, size=img_resized.size)
+        except Exception as e:
+            print(f"Aviso: CTkImage falló ({e}), usando fallback nativo PNG/PPM...")
+
+    # 2. Fallback PNG con tk.PhotoImage (Tcl/Tk 8.6+ nativo sin necesidad de _imagingtk)
     try:
         buf = io.BytesIO()
         img_resized.save(buf, format="PNG")
@@ -109,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.3"
+VERSION = "3.3.4"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"

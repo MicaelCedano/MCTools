@@ -2,7 +2,7 @@
 import os
 import customtkinter
 import PIL
-from PyInstaller.utils.hooks import collect_all
+from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
 
 datas = [('logo.ico', '.'), ('logo.png', '.')]
 binaries = []
@@ -27,9 +27,11 @@ hiddenimports = [
 ctk_path = os.path.dirname(customtkinter.__file__)
 datas.append((ctk_path, 'customtkinter'))
 
-# Incluir carpeta completa de PIL
-pil_path = os.path.dirname(PIL.__file__)
-datas.append((pil_path, 'PIL'))
+# Recolectar binarios DLL/PYD dinámicos de PIL
+try:
+    binaries.extend(collect_dynamic_libs('PIL'))
+except Exception as e:
+    print(f"Advertencia al recolectar librerías dinámicas de PIL: {e}")
 
 for pkg in ['PIL', 'customtkinter', 'reportlab', 'barcode', 'qrcode']:
     try:
