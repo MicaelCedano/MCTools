@@ -120,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.7"
+VERSION = "3.3.8"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -948,35 +948,55 @@ class VentanaActualizacionDisponible(customtkinter.CTkToplevel):
         # Buttons
         buttons_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         buttons_frame.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
-        buttons_frame.grid_columnconfigure((0, 1), weight=1)
+        buttons_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
         self.cancel_btn = customtkinter.CTkButton(
             buttons_frame, 
-            text="Cancelar", 
+            text="Más tarde", 
             fg_color="#334155", 
             hover_color="#475569", 
             text_color="#F8FAFC", 
-            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
             height=40, 
             corner_radius=10, 
             command=self.destroy
         )
-        self.cancel_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        self.cancel_btn.grid(row=0, column=0, padx=(0, 3), sticky="ew")
+
+        self.direct_btn = customtkinter.CTkButton(
+            buttons_frame, 
+            text="Descargar .exe", 
+            fg_color="#06B6D4", 
+            hover_color="#0891B2", 
+            text_color="#FFFFFF", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
+            height=40, 
+            corner_radius=10, 
+            command=self.abrir_descarga_directa
+        )
+        self.direct_btn.grid(row=0, column=1, padx=3, sticky="ew")
         
-        action_text = "Instalar ahora" if (getattr(sys, 'frozen', False) and exe_url) else "Ver en GitHub"
+        action_text = "Instalar Automático" if (getattr(sys, 'frozen', False) and exe_url) else "Ver en GitHub"
         self.update_btn = customtkinter.CTkButton(
             buttons_frame, 
             text=action_text, 
             fg_color="#6366F1", 
             hover_color="#4F46E5", 
             text_color="#FFFFFF", 
-            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
             height=40, 
             corner_radius=10, 
             command=self.proceder_actualizacion
         )
-        self.update_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        self.update_btn.grid(row=0, column=2, padx=(3, 0), sticky="ew")
         
+    def abrir_descarga_directa(self):
+        self.destroy()
+        if self.exe_url:
+            webbrowser.open(self.exe_url)
+        else:
+            webbrowser.open(self.html_url)
+
     def proceder_actualizacion(self):
         self.destroy()
         if getattr(sys, 'frozen', False) and self.exe_url:
