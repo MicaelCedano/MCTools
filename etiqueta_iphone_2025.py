@@ -2094,21 +2094,22 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                             # Actualizar UI
                             self.after(0, lambda val=progreso, txt=texto_status: ventana_progreso.actualizar_progreso(val, txt))
             
-            self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, "Instalando actualización..."))
+                        self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, "Instalando actualización..."))
             
             # En Windows NO se puede renombrar/mover un .exe en ejecución (OS bloquea el archivo).
-            # En lugar de os.rename(), creamos un .bat helper que espera a que la app termine,
-            # hace el reemplazo, y lanza la nueva versión.
+            # Solución: mini VBS que lanza el batch helper INVISIBLE (wscript.exe = sin consola).
             exe_name_only = os.path.basename(current_exe)
             bat_path = os.path.join(exe_dir, "_update_helper.bat")
             
+            # 1. Crear el batch helper (hace el reemplazo)
+            exe_short = exe_name_only.replace('.exe', '')
             bat_lines = [
                 "@echo off",
                 "chcp 65001 >nul 2>&1",
                 "",
                 ":wait",
                 "ping 127.0.0.1 -n 2 >nul",
-                'tasklist /FI "IMAGENAME eq ' + current_exe.split(os.sep)[-1] + '" 2>nul | find /I "McTools" >nul',
+                'tasklist /FI "IMAGENAME eq ' + exe_name_only + '" 2>nul | find /I "' + exe_short + '" >nul',
                 "if not errorlevel 1 goto wait",
                 "",
                 'move /Y "' + new_exe + '" "' + current_exe + '" >nul 2>&1',
@@ -2123,9 +2124,17 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             with open(bat_path, 'w', newline='\r\n') as f:
                 f.write(bat_content)
             
+            # 2. Crear VBS que lanza el batch oculto (0 = ventana oculta)
+            vbs_path = os.path.join(exe_dir, "_update_helper.vbs")
+            vbs_code = 'CreateObject("WScript.Shell").Run "' + bat_path + '", 0, False'
+            
+            with open(vbs_path, 'w', newline='\r\n') as f:
+                f.write(vbs_code)
+            
+            # 3. Lanzar el VBS con wscript.exe (100% invisible, sin consola)
             subprocess.Popen(
-                [bat_path],
-                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                ['wscript.exe', vbs_path],
+                creationflags=subprocess.DETACHED_PROCESS,
                 close_fds=True
             )
             
