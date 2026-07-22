@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.11"
+VERSION = "3.3.12"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -989,54 +989,34 @@ class VentanaActualizacionDisponible(customtkinter.CTkToplevel):
         # Buttons
         buttons_frame = customtkinter.CTkFrame(self, fg_color="transparent")
         buttons_frame.grid(row=3, column=0, padx=20, pady=20, sticky="ew")
-        buttons_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        buttons_frame.grid_columnconfigure((0, 1), weight=1)
         
         self.cancel_btn = customtkinter.CTkButton(
             buttons_frame, 
-            text="Más tarde", 
+            text="Cancelar", 
             fg_color="#334155", 
             hover_color="#475569", 
             text_color="#F8FAFC", 
-            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
             height=40, 
             corner_radius=10, 
             command=self.destroy
         )
-        self.cancel_btn.grid(row=0, column=0, padx=(0, 3), sticky="ew")
-
-        self.direct_btn = customtkinter.CTkButton(
-            buttons_frame, 
-            text="Descargar .exe", 
-            fg_color="#06B6D4", 
-            hover_color="#0891B2", 
-            text_color="#FFFFFF", 
-            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
-            height=40, 
-            corner_radius=10, 
-            command=self.abrir_descarga_directa
-        )
-        self.direct_btn.grid(row=0, column=1, padx=3, sticky="ew")
+        self.cancel_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
         
-        action_text = "Instalar Automático" if (getattr(sys, 'frozen', False) and exe_url) else "Ver en GitHub"
+        action_text = "Instalar ahora" if (getattr(sys, 'frozen', False) and exe_url) else "Ver en GitHub"
         self.update_btn = customtkinter.CTkButton(
             buttons_frame, 
             text=action_text, 
             fg_color="#6366F1", 
             hover_color="#4F46E5", 
             text_color="#FFFFFF", 
-            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
             height=40, 
             corner_radius=10, 
             command=self.proceder_actualizacion
         )
-        self.update_btn.grid(row=0, column=2, padx=(3, 0), sticky="ew")
-        
-    def abrir_descarga_directa(self):
-        self.destroy()
-        if self.exe_url:
-            webbrowser.open(self.exe_url)
-        else:
-            webbrowser.open(self.html_url)
+        self.update_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
 
     def proceder_actualizacion(self):
         self.destroy()
@@ -1049,34 +1029,38 @@ class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
     def __init__(self, parent, version_nueva):
         super().__init__(parent)
         self.title("Actualizando McTools")
-        self.geometry("400x150")
+        self.geometry("450x190")
         self.resizable(False, False)
+        self.configure(fg_color="#0F172A")
         
         # Centrar la ventana de progreso respecto al padre
         self.transient(parent)
-        
-        # En Windows, grab_set asegura el comportamiento modal
         self.grab_set()
         self.focus_set()
         
         self.grid_columnconfigure(0, weight=1)
         
-        self.label = customtkinter.CTkLabel(
+        # 1. Porcentaje y Título en la Parte Superior
+        self.percent_label = customtkinter.CTkLabel(
             self, 
-            text=f"Descargando versión {version_nueva}...", 
-            font=customtkinter.CTkFont(size=14, weight="bold")
+            text=f"⚡ Descargando v{version_nueva} (0%)", 
+            font=customtkinter.CTkFont(family="Inter", size=16, weight="bold"),
+            text_color="#06B6D4"
         )
-        self.label.grid(row=0, column=0, padx=20, pady=(20, 10))
+        self.percent_label.grid(row=0, column=0, padx=20, pady=(20, 5))
         
-        self.progress_bar = customtkinter.CTkProgressBar(self, width=320)
+        # 2. Barra de Progreso
+        self.progress_bar = customtkinter.CTkProgressBar(self, width=380, height=14, corner_radius=7, fg_color="#1E293B", progress_color="#06B6D4")
         self.progress_bar.grid(row=1, column=0, padx=20, pady=10)
         self.progress_bar.set(0)
         
-        self.status_label = customtkinter.CTkLabel(self, text="Conectando con GitHub...", text_color="gray")
+        # 3. Detalle de estado (MBs transferidos)
+        self.status_label = customtkinter.CTkLabel(self, text="Conectando con servidor de descarga...", font=customtkinter.CTkFont(family="Inter", size=11), text_color="#94A3B8")
         self.status_label.grid(row=2, column=0, padx=20, pady=(0, 20))
         
-    def actualizar_progreso(self, valor, texto_status):
+    def actualizar_progreso(self, valor, porcentaje, texto_status):
         self.progress_bar.set(valor)
+        self.percent_label.configure(text=f"⚡ Descargando v3.3.12 ({porcentaje}%)")
         self.status_label.configure(text=texto_status)
 
 class IMEIHistoryWindow(customtkinter.CTkToplevel):
@@ -2429,29 +2413,42 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                             porcentaje = int(progreso * 100)
                             descargado_mb = bytes_downloaded / (1024 * 1024)
                             total_mb = total_size / (1024 * 1024)
-                            texto_status = f"Descargado {descargado_mb:.2f} MB de {total_mb:.2f} MB ({porcentaje}%)"
+                            texto_status = f"Descargado {descargado_mb:.2f} MB de {total_mb:.2f} MB"
                             
                             # Actualizar UI
-                            self.after(0, lambda val=progreso, txt=texto_status: ventana_progreso.actualizar_progreso(val, txt))
+                            self.after(0, lambda val=progreso, pct=porcentaje, txt=texto_status: ventana_progreso.actualizar_progreso(val, pct, txt))
             
-                        self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, "Instalando actualización..."))
+                self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, 100, "Instalación lista. Reiniciando..."))
             
             # En Windows NO se puede renombrar/mover un .exe en ejecución (OS bloquea el archivo).
-            # Solución 100% fiable: Lanzador PowerShell desacoplado sin archivos VBS/BAT temporales
-            target_exe_esc = os.path.abspath(current_exe).replace("'", "''")
-            new_exe_esc = os.path.abspath(new_exe).replace("'", "''")
+            # Solución 100% fiable: Script Batch helper en %TEMP% con bucle de reintento lanzado vía wscript.exe
+            temp_dir = tempfile.gettempdir()
+            bat_path = os.path.join(temp_dir, "mctools_updater.bat")
+            vbs_path = os.path.join(temp_dir, "mctools_launcher.vbs")
             
-            ps_command = (
-                "Start-Sleep -Seconds 2; "
-                f"Copy-Item -Path '{new_exe_esc}' -Destination '{target_exe_esc}' -Force; "
-                f"Remove-Item -Path '{new_exe_esc}' -Force -ErrorAction SilentlyContinue; "
-                f"Start-Process -FilePath '{target_exe_esc}'"
-            )
+            bat_lines = [
+                "@echo off",
+                ":retry",
+                "ping 127.0.0.1 -n 2 >nul",
+                f'copy /Y "{new_exe}" "{current_exe}" >nul 2>&1 || goto retry',
+                f'start "" "{current_exe}"',
+                "ping 127.0.0.1 -n 2 >nul",
+                f'if exist "{vbs_path}" del /F /Q "{vbs_path}" >nul 2>&1',
+                f'if exist "{new_exe}" del /F /Q "{new_exe}" >nul 2>&1',
+                '(goto) 2>nul & del "%~f0" >nul 2>&1'
+            ]
             
-            cmd_launcher = f'start /b "" powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command "{ps_command}"'
-            subprocess.Popen(cmd_launcher, shell=True)
+            with open(bat_path, 'w', encoding='cp1252') as f:
+                f.write("\r\n".join(bat_lines))
+                
+            vbs_code = f'CreateObject("WScript.Shell").Run Chr(34) & "{bat_path}" & Chr(34), 0, False'
+            with open(vbs_path, 'w', encoding='cp1252') as f:
+                f.write(vbs_code)
+                
+            # Lanzar el Script VBScript (100% invisible)
+            subprocess.Popen(['wscript.exe', vbs_path])
             
-            # Cerrar la app actual inmediatamente para liberar los bloqueos de archivo
+            # Cerrar la app actual para liberar inmediatamente el ejecutable
             time.sleep(0.3)
             os._exit(0)
             
