@@ -53,6 +53,10 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+
+# Excluir Tcl/Tk (no se necesita para customtkinter que incluye su propio runtime)
+# a.binaries = [x for x in a.binaries if not x[0].startswith('tcl') and not x[0].startswith('tk')]
+
 pyz = PYZ(a.pure)
 
 exe = EXE(
