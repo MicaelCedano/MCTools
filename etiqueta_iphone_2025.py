@@ -120,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.9"
+VERSION = "3.3.10"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -189,6 +189,17 @@ temporary_files_to_delete = []
 
 # --- Funciones de Configuración y Limpieza ---
 
+DEFAULT_MODELOS = [
+    "iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16",
+    "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15",
+    "iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14",
+    "iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 mini", "iPhone 13",
+    "iPhone 12 Pro Max", "iPhone 12 Pro", "iPhone 12 mini", "iPhone 12",
+    "iPhone 11 Pro Max", "iPhone 11 Pro", "iPhone 11",
+    "iPad Pro", "iPad Air",
+    "Samsung Galaxy S24 Ultra", "Samsung Galaxy S23 Ultra", "Xiaomi Redmi Note"
+]
+
 def _read_config():
     """Lee el archivo de configuración JSON de forma segura."""
     if os.path.exists(CONFIG_FILE_NAME):
@@ -206,6 +217,35 @@ def _write_config(config_data):
             json.dump(config_data, f, indent=4)
     except Exception as e:
         print(f"Error al guardar configuración: {e}")
+
+def obtener_lista_modelos():
+    """Obtiene la lista de modelos guardados, combinando los por defecto con los aprendidos."""
+    config = _read_config()
+    modelos = config.get("custom_modelos", [])
+    if not modelos:
+        modelos = list(DEFAULT_MODELOS)
+        config["custom_modelos"] = modelos
+        _write_config(config)
+    return modelos
+
+def guardar_nuevo_modelo(modelo_texto):
+    """Agrega un nuevo modelo a la lista si no existe previamente y la guarda en la configuración."""
+    if not modelo_texto or not isinstance(modelo_texto, str):
+        return False
+    modelo_clean = modelo_texto.strip()
+    if not modelo_clean or len(modelo_clean) < 2:
+        return False
+        
+    config = _read_config()
+    modelos = config.get("custom_modelos", list(DEFAULT_MODELOS))
+    
+    # Verificar insensible a mayúsculas/minúsculas
+    if not any(m.lower() == modelo_clean.lower() for m in modelos):
+        modelos.insert(0, modelo_clean)  # Agregar al inicio para rápida selección
+        config["custom_modelos"] = modelos
+        _write_config(config)
+        return True
+    return False
 
 def cargar_config_inicial():
     """Carga la configuración de SumatraPDF al inicio."""
@@ -1319,7 +1359,23 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         modelo_entry_frame_bc = customtkinter.CTkFrame(modelo_card_bc, fg_color="transparent")
         modelo_entry_frame_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
         modelo_entry_frame_bc.grid_columnconfigure(0, weight=1)
-        self.modelo_entry_bc = customtkinter.CTkEntry(modelo_entry_frame_bc, textvariable=self.modelo_var, placeholder_text="Ej. iPhone 15 Pro Max", fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", placeholder_text_color="#64748B", height=32, corner_radius=8)
+        self.modelo_entry_bc = customtkinter.CTkComboBox(
+            modelo_entry_frame_bc,
+            variable=self.modelo_var,
+            values=obtener_lista_modelos(),
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8
+        )
         self.modelo_entry_bc.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         customtkinter.CTkButton(modelo_entry_frame_bc, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_modelo).grid(row=0, column=1, padx=0)
 
@@ -1367,7 +1423,23 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         modelo_entry_frame_qr = customtkinter.CTkFrame(modelo_card_qr, fg_color="transparent")
         modelo_entry_frame_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
         modelo_entry_frame_qr.grid_columnconfigure(0, weight=1)
-        self.modelo_entry_qr = customtkinter.CTkEntry(modelo_entry_frame_qr, textvariable=self.modelo_var, placeholder_text="Ej. iPhone 15 Pro Max", fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", placeholder_text_color="#64748B", height=32, corner_radius=8)
+        self.modelo_entry_qr = customtkinter.CTkComboBox(
+            modelo_entry_frame_qr,
+            variable=self.modelo_var,
+            values=obtener_lista_modelos(),
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8
+        )
         self.modelo_entry_qr.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         customtkinter.CTkButton(modelo_entry_frame_qr, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_modelo).grid(row=0, column=1, padx=0)
 
@@ -1733,7 +1805,19 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             return
         self._finalizar_generacion(temp_pdf_path, modelo, "qr", guardar_permanente, imprimir_despues)
 
+    def aprender_modelo_actual(self):
+        """Aprende y guarda en la configuración el modelo que el usuario está utilizando actualmente."""
+        modelo = self.modelo_var.get().strip()
+        if guardar_nuevo_modelo(modelo):
+            # Actualizar opciones de los comboboxes de modelo en la interfaz
+            nuevos_modelos = obtener_lista_modelos()
+            if hasattr(self, 'modelo_entry_bc') and self.modelo_entry_bc:
+                self.modelo_entry_bc.configure(values=nuevos_modelos)
+            if hasattr(self, 'modelo_entry_qr') and self.modelo_entry_qr:
+                self.modelo_entry_qr.configure(values=nuevos_modelos)
+
     def _finalizar_generacion(self, temp_pdf_path, modelo, identificador, guardar_permanente=False, imprimir_despues=False):
+        self.aprender_modelo_actual()
         if guardar_permanente:
             path_salida = filedialog.asksaveasfilename(
                 title="Guardar Etiqueta PDF",
@@ -2103,6 +2187,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Si se detectó un modelo y el campo Modelo está vacío, autocompletar
         if modelo_detectado and not self.modelo_var.get().strip():
             self.modelo_var.set(modelo_detectado)
+            self.aprender_modelo_actual()
 
         self.actualizar_contador_imeis()
         self.schedule_preview_update()

@@ -36,7 +36,7 @@
 
 ```text
 MCTools Dev/
-├── etiqueta_iphone_2025.py        # Código fuente principal de la aplicación GUI (v3.3.9)
+├── etiqueta_iphone_2025.py        # Código fuente principal de la aplicación GUI (v3.3.10)
 ├── generar_qr_imeis (1).py        # Módulo/script alternativo para generación de etiquetas QR
 ├── procesador imeis yacelltech.py # Herramienta auxiliar de procesamiento e historial de IMEIs
 ├── etiqueta_config.json           # Archivo de configuración local y almacenamiento de historial
