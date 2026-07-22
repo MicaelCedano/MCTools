@@ -35,6 +35,7 @@ import urllib.request
 import re
 import threading
 import sys
+import time
 import webbrowser
 
 # --- Dependencias para Guardado/Impresión en PDF ---
@@ -120,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.10"
+VERSION = "3.3.11"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2403,8 +2404,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def _hilo_descarga_reemplazo(self, exe_url, exe_name, ventana_progreso):
         try:
             current_exe = sys.executable
-            exe_dir = os.path.dirname(current_exe)
-            new_exe = os.path.join(exe_dir, f"{exe_name}.new")
+            temp_dir = tempfile.gettempdir()
+            new_exe = os.path.join(temp_dir, f"mctools_update_{int(time.time())}.exe")
             
             req = urllib.request.Request(
                 exe_url, 
