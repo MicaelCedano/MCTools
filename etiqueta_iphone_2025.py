@@ -120,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.6"
+VERSION = "3.3.7"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2331,49 +2331,22 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                         self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, "Instalando actualización..."))
             
             # En Windows NO se puede renombrar/mover un .exe en ejecución (OS bloquea el archivo).
-            # Solución: mini VBS que lanza el batch helper INVISIBLE (wscript.exe = sin consola).
-            exe_name_only = os.path.basename(current_exe)
-            bat_path = os.path.join(exe_dir, "_update_helper.bat")
+            # Solución 100% fiable: Lanzador PowerShell desacoplado sin archivos VBS/BAT temporales
+            target_exe_esc = os.path.abspath(current_exe).replace("'", "''")
+            new_exe_esc = os.path.abspath(new_exe).replace("'", "''")
             
-            # 1. Crear el batch helper (hace el reemplazo)
-            exe_short = exe_name_only.replace('.exe', '')
-            vbs_path = os.path.join(exe_dir, "_update_helper.vbs")
-            bat_lines = [
-                "@echo off",
-                "chcp 65001 >nul 2>&1",
-                "",
-                ":wait",
-                "ping 127.0.0.1 -n 2 >nul",
-                'tasklist /FI "IMAGENAME eq ' + exe_name_only + '" 2>nul | find /I "' + exe_short + '" >nul',
-                "if not errorlevel 1 goto wait",
-                "",
-                'move /Y "' + new_exe + '" "' + current_exe + '" >nul 2>&1',
-                'if exist "' + current_exe + '.old" del /F /Q "' + current_exe + '.old" >nul 2>&1',
-                "",
-                'start "" "' + current_exe + '"',
-                "",
-                'if exist "' + vbs_path + '" del /F /Q "' + vbs_path + '" >nul 2>&1',
-                '(goto) 2>nul & del "%~f0" >nul 2>&1',
-            ]
-            bat_content = "\r\n".join(bat_lines)
-            
-            with open(bat_path, 'w', newline='\r\n') as f:
-                f.write(bat_content)
-            
-            # 2. Crear VBS que lanza el batch oculto (0 = ventana oculta, Chr(34) para manejar espacios en rutas)
-            vbs_code = 'CreateObject("WScript.Shell").Run Chr(34) & "' + bat_path + '" & Chr(34), 0, False'
-            
-            with open(vbs_path, 'w', newline='\r\n') as f:
-                f.write(vbs_code)
-            
-            # 3. Lanzar el VBS con wscript.exe (100% invisible, sin consola)
-            subprocess.Popen(
-                ['wscript.exe', vbs_path],
-                creationflags=subprocess.DETACHED_PROCESS,
-                close_fds=True
+            ps_command = (
+                "Start-Sleep -Seconds 2; "
+                f"Copy-Item -Path '{new_exe_esc}' -Destination '{target_exe_esc}' -Force; "
+                f"Remove-Item -Path '{new_exe_esc}' -Force -ErrorAction SilentlyContinue; "
+                f"Start-Process -FilePath '{target_exe_esc}'"
             )
             
-            # Cerrar la app actual
+            cmd_launcher = f'start /b "" powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command "{ps_command}"'
+            subprocess.Popen(cmd_launcher, shell=True)
+            
+            # Cerrar la app actual inmediatamente para liberar los bloqueos de archivo
+            time.sleep(0.3)
             os._exit(0)
             
         except Exception as e:
