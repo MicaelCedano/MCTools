@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.15"
+VERSION = "3.3.16"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1292,6 +1292,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self._setup_ui()
         self.cargar_y_cachear_logo()
         self._bind_events()
+        self.protocol("WM_DELETE_WINDOW", self.al_cerrar_aplicacion)
         self.after(100, self.force_preview_update)
         self.after(2000, self.chequear_actualizaciones_async)
 
@@ -2560,6 +2561,17 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def _error_descarga_inline(self):
         self.update_progress.grid_remove()
         self.btn_update.configure(text="Buscar act.", fg_color="#334155", state="normal")
+
+    def al_cerrar_aplicacion(self):
+        """Intercepta el cierre de la aplicación. Si hay una actualización lista, la aplica automáticamente al salir."""
+        if getattr(self, 'update_ready', False) and getattr(self, 'downloaded_new_exe', None) and os.path.exists(self.downloaded_new_exe):
+            self.ejecutar_instalacion_inmediata()
+        else:
+            try:
+                self.destroy()
+            except Exception:
+                pass
+            os._exit(0)
 
     def ejecutar_instalacion_inmediata(self):
         """Ejecuta la sustitución del ejecutable e inicia la nueva versión."""
