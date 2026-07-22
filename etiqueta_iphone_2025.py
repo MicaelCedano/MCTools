@@ -13,7 +13,11 @@ Cambios en v3.2.5:
 - Reajustados los márgenes y espaciados para garantizar que todos los elementos quepan.
 - Se fuerza el dibujado secuencial y completo de todos los elementos.
 """
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import ImageTk
+except ImportError:
+    ImageTk = None
 import barcode
 from barcode.writer import ImageWriter
 import qrcode
@@ -56,8 +60,56 @@ def corregir_directorio_trabajo():
 
 corregir_directorio_trabajo()
 
+def pil_to_tk_image_safe(pil_img, size=None):
+    """
+    Convierte una imagen PIL a un objeto de imagen compatible con CustomTkinter/Tkinter.
+    Intenta primero usar CustomTkinter CTkImage. Si falla (por ejemplo, si falta PIL._imagingtk
+    o da ImportError en la máquina del usuario), realiza un fallback transparente a tk.PhotoImage
+    usando bytes PNG o PPM en memoria, lo cual funciona en Tcl/Tk nativo sin necesidad de _imagingtk.
+    """
+    if pil_img is None:
+        return None
+    if size:
+        img_resized = pil_img.resize(size, Image.Resampling.LANCZOS)
+    else:
+        img_resized = pil_img
+
+    # 1. Intentar CustomTkinter CTkImage (soporta escalado HDPI)
+    try:
+        return customtkinter.CTkImage(light_image=img_resized, dark_image=img_resized, size=img_resized.size)
+    except Exception as e:
+        print(f"Aviso: CTkImage falló ({e}), usando fallback nativo PNG/PPM...")
+
+    # 2. Fallback PNG con tk.PhotoImage (Tcl/Tk 8.6+ nativo)
+    try:
+        buf = io.BytesIO()
+        img_resized.save(buf, format="PNG")
+        buf.seek(0)
+        return tk.PhotoImage(data=buf.getvalue())
+    except Exception as e2:
+        print(f"Aviso: Fallback PNG falló ({e2}), usando fallback PPM...")
+
+    # 3. Fallback PPM (Soporte universal Tcl/Tk)
+    try:
+        buf = io.BytesIO()
+        img_resized.convert("RGB").save(buf, format="PPM")
+        buf.seek(0)
+        return tk.PhotoImage(data=buf.getvalue())
+    except Exception as e3:
+        raise e3
+
+def obtener_ruta_recurso(rel_path):
+    """Obtiene la ruta absoluta a un recurso, compatible con entorno dev y PyInstaller."""
+    if os.path.exists(rel_path):
+        return rel_path
+    if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+        mei_path = os.path.join(sys._MEIPASS, rel_path)
+        if os.path.exists(mei_path):
+            return mei_path
+    return rel_path
+
 # --- Constantes ---
-VERSION = "3.3"
+VERSION = "3.3.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1471,9 +1523,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     self.cached_logo_pil
                 )
                 
-            self.preview_ctk_image = customtkinter.CTkImage(
-                light_image=pil_image,
-                dark_image=pil_image,
+            self.preview_ctk_image = pil_to_tk_image_safe(
+                pil_image,
                 size=(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
             )
             

@@ -1,6 +1,5 @@
 # Carpetas de compilación de PyInstaller
 build/
-*.spec
 
 # Caché de Python
 __pycache__/

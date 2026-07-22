@@ -4,7 +4,11 @@ Generador de Etiquetas con QR para IMEIs
 Versión: 1.0.0
 Basado en: etiqueta_iphone_2025.py
 """
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFont
+try:
+    from PIL import ImageTk
+except ImportError:
+    ImageTk = None
 import qrcode
 import io
 import customtkinter
@@ -17,7 +21,32 @@ import tempfile
 import atexit
 import json
 
-# --- Dependencias para Guardado/Impresión en PDF ---
+# --- Helper de Conversión Segura de Imágenes ---
+def pil_to_tk_image_safe(pil_img, size=None):
+    if pil_img is None:
+        return None
+    if size:
+        img_resized = pil_img.resize(size, Image.Resampling.LANCZOS)
+    else:
+        img_resized = pil_img
+
+    try:
+        return customtkinter.CTkImage(light_image=img_resized, dark_image=img_resized, size=img_resized.size)
+    except Exception:
+        pass
+
+    try:
+        buf = io.BytesIO()
+        img_resized.save(buf, format="PNG")
+        buf.seek(0)
+        return tk.PhotoImage(data=buf.getvalue())
+    except Exception:
+        pass
+
+    buf = io.BytesIO()
+    img_resized.convert("RGB").save(buf, format="PPM")
+    buf.seek(0)
+    return tk.PhotoImage(data=buf.getvalue())
 PDF_SAVE_ENABLED = False
 try:
     from reportlab.pdfgen import canvas as reportlab_canvas
@@ -603,9 +632,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.logo_path_var.get().strip()
             )
             
-            self.preview_ctk_image = customtkinter.CTkImage(
-                light_image=pil_image,
-                dark_image=pil_image,
+            self.preview_ctk_image = pil_to_tk_image_safe(
+                pil_image,
                 size=(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
             )
             
