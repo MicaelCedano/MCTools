@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.12"
+VERSION = "3.3.13"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -293,27 +293,78 @@ def guardar_config_sumatra():
         _write_config(config)
 
 def detectar_sumatra_si_no_configurado():
-    """Intenta encontrar SumatraPDF en rutas comunes si no está configurado."""
+    """Intenta encontrar SumatraPDF en todas las rutas comunes de Windows, registros y carpetas del usuario."""
     global SUMATRA_PDF_PATH
-    if SUMATRA_PDF_PATH or platform.system() != "Windows": return
-    SUMATRA_PDF_DEFAULT_PATHS = [
-        "SumatraPDF.exe",
-        os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "SumatraPDF", "SumatraPDF.exe"),
-        os.path.join(os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)"), "SumatraPDF", "SumatraPDF.exe"),
+    if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH) and os.path.isfile(SUMATRA_PDF_PATH):
+        return SUMATRA_PDF_PATH
+
+    if platform.system() != "Windows":
+        return None
+
+    user_profile = os.environ.get("USERPROFILE", "")
+    program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+    local_app_data = os.environ.get("LOCALAPPDATA", "")
+    app_data = os.environ.get("APPDATA", "")
+    current_exe_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+
+    SUMATRA_PDF_CANDIDATE_PATHS = [
+        os.path.join(current_exe_dir, "SumatraPDF.exe"),
+        os.path.join(local_app_data, "SumatraPDF", "SumatraPDF.exe"),
+        os.path.join(program_files, "SumatraPDF", "SumatraPDF.exe"),
+        os.path.join(program_files_x86, "SumatraPDF", "SumatraPDF.exe"),
+        os.path.join(app_data, "SumatraPDF", "SumatraPDF.exe"),
+        os.path.join(user_profile, "Downloads", "SumatraPDF.exe"),
+        os.path.join(user_profile, "Desktop", "SumatraPDF.exe"),
+        "C:\\SumatraPDF\\SumatraPDF.exe",
+        "SumatraPDF.exe"
     ]
-    for path_candidate in SUMATRA_PDF_DEFAULT_PATHS:
-        try:
-            result = subprocess.run(["where", os.path.basename(path_candidate)], capture_output=True, text=True, check=False, shell=True)
-            if result.returncode == 0 and result.stdout.strip():
-                SUMATRA_PDF_PATH = result.stdout.strip().splitlines()[0]
+
+    # 1. Probar candidato por candidato
+    for path_candidate in SUMATRA_PDF_CANDIDATE_PATHS:
+        if path_candidate and os.path.exists(path_candidate) and os.path.isfile(path_candidate):
+            SUMATRA_PDF_PATH = path_candidate
+            print(f"SumatraPDF detectado automáticamente en: {SUMATRA_PDF_PATH}")
+            guardar_config_sumatra()
+            return SUMATRA_PDF_PATH
+
+    # 2. Buscar en el PATH del sistema usando 'where'
+    try:
+        result = subprocess.run(["where", "SumatraPDF.exe"], capture_output=True, text=True, check=False, shell=True)
+        if result.returncode == 0 and result.stdout.strip():
+            found_path = result.stdout.strip().splitlines()[0]
+            if os.path.exists(found_path) and os.path.isfile(found_path):
+                SUMATRA_PDF_PATH = found_path
                 print(f"SumatraPDF detectado en el PATH: {SUMATRA_PDF_PATH}")
-                return
-            elif os.path.exists(path_candidate) and os.path.isfile(path_candidate):
-                SUMATRA_PDF_PATH = path_candidate
-                print(f"SumatraPDF detectado en: {SUMATRA_PDF_PATH}")
-                return
-        except Exception: pass
-    print("ADVERTENCIA: SumatraPDF no se detectó automáticamente.")
+                guardar_config_sumatra()
+                return SUMATRA_PDF_PATH
+    except Exception:
+        pass
+
+    # 3. Buscar en el Registro de Windows (App Paths / Uninstall)
+    try:
+        import winreg
+        keys_to_check = [
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\SumatraPDF.exe"),
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\SumatraPDF.exe"),
+            (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\SumatraPDF"),
+            (winreg.HKEY_CURRENT_USER, r"SOFTWARE\SumatraPDF")
+        ]
+        for root_key, subkey in keys_to_check:
+            try:
+                with winreg.OpenKey(root_key, subkey) as key:
+                    val, _ = winreg.QueryValueEx(key, "")
+                    if val and os.path.exists(val) and os.path.isfile(val):
+                        SUMATRA_PDF_PATH = val
+                        print(f"SumatraPDF detectado en Registro: {SUMATRA_PDF_PATH}")
+                        guardar_config_sumatra()
+                        return SUMATRA_PDF_PATH
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    return None
 
 def cleanup_temp_files():
     """Elimina los archivos temporales creados durante la sesión."""
@@ -1828,6 +1879,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         current_os = platform.system()
         try:
             if current_os == "Windows":
+                global SUMATRA_PDF_PATH
+                if not SUMATRA_PDF_PATH or not os.path.exists(SUMATRA_PDF_PATH):
+                    detectar_sumatra_si_no_configurado()
+
                 printer_name = self.printer_var.get().strip()
                 
                 # Si está seleccionada la "Impresora Predeterminada", usar la lógica predeterminada
