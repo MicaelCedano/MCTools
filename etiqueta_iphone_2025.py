@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.4.1"
+VERSION = "3.4.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -190,16 +190,21 @@ temporary_files_to_delete = []
 
 # --- Funciones de Configuración y Limpieza ---
 
-DEFAULT_MODELOS = [
-    "iPhone 16 Pro Max", "iPhone 16 Pro", "iPhone 16 Plus", "iPhone 16",
-    "iPhone 15 Pro Max", "iPhone 15 Pro", "iPhone 15 Plus", "iPhone 15",
-    "iPhone 14 Pro Max", "iPhone 14 Pro", "iPhone 14 Plus", "iPhone 14",
-    "iPhone 13 Pro Max", "iPhone 13 Pro", "iPhone 13 mini", "iPhone 13",
-    "iPhone 12 Pro Max", "iPhone 12 Pro", "iPhone 12 mini", "iPhone 12",
-    "iPhone 11 Pro Max", "iPhone 11 Pro", "iPhone 11",
-    "iPad Pro", "iPad Air",
-    "Samsung Galaxy S24 Ultra", "Samsung Galaxy S23 Ultra", "Xiaomi Redmi Note"
-]
+# --- Funciones de Configuración y Limpieza ---
+
+DEFAULT_MODELOS = []
+
+# Conjunto de modelos de ejemplo antiguos para limpiar de la configuración local si existieran
+PREPOPULATED_DEFAULTS = {
+    "iphone 16 pro max", "iphone 16 pro", "iphone 16 plus", "iphone 16",
+    "iphone 15 pro max", "iphone 15 pro", "iphone 15 plus", "iphone 15",
+    "iphone 14 pro max", "iphone 14 pro", "iphone 14 plus", "iphone 14",
+    "iphone 13 pro max", "iphone 13 pro", "iphone 13 mini", "iphone 13",
+    "iphone 12 pro max", "iphone 12 pro", "iphone 12 mini", "iphone 12",
+    "iphone 11 pro max", "iphone 11 pro", "iphone 11",
+    "ipad pro", "ipad air",
+    "samsung galaxy s24 ultra", "samsung galaxy s23 ultra", "xiaomi redmi note"
+}
 
 def _read_config():
     """Lee el archivo de configuración JSON de forma segura."""
@@ -220,14 +225,18 @@ def _write_config(config_data):
         print(f"Error al guardar configuración: {e}")
 
 def obtener_lista_modelos():
-    """Obtiene la lista de modelos guardados, combinando los por defecto con los aprendidos."""
+    """Obtiene la lista de modelos aprendidos únicamente por el usuario."""
     config = _read_config()
     modelos = config.get("custom_modelos", [])
-    if not modelos:
-        modelos = list(DEFAULT_MODELOS)
-        config["custom_modelos"] = modelos
+    
+    # Filtrar modelos por defecto antiguos si existían en el json
+    modelos_limpios = [m for m in modelos if isinstance(m, str) and m.strip().lower() not in PREPOPULATED_DEFAULTS]
+    
+    if len(modelos_limpios) != len(modelos):
+        config["custom_modelos"] = modelos_limpios
         _write_config(config)
-    return modelos
+        
+    return modelos_limpios
 
 def guardar_nuevo_modelo(modelo_texto):
     """Agrega un nuevo modelo a la lista si no existe previamente y la guarda en la configuración."""
@@ -238,7 +247,8 @@ def guardar_nuevo_modelo(modelo_texto):
         return False
         
     config = _read_config()
-    modelos = config.get("custom_modelos", list(DEFAULT_MODELOS))
+    modelos = config.get("custom_modelos", [])
+    modelos = [m for m in modelos if isinstance(m, str) and m.strip().lower() not in PREPOPULATED_DEFAULTS]
     
     # Verificar insensible a mayúsculas/minúsculas
     if not any(m.lower() == modelo_clean.lower() for m in modelos):
