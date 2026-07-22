@@ -109,7 +109,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.1"
+VERSION = "3.3.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2094,42 +2094,42 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                             # Actualizar UI
                             self.after(0, lambda val=progreso, txt=texto_status: ventana_progreso.actualizar_progreso(val, txt))
             
-            # Completado, proceder a reemplazo
             self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, "Instalando actualización..."))
             
-            # 1. Renombrar actual a .old
-            old_exe = current_exe + ".old"
-            if os.path.exists(old_exe):
-                try:
-                    os.remove(old_exe)
-                except Exception:
-                    pass
+            # En Windows NO se puede renombrar/mover un .exe en ejecución (OS bloquea el archivo).
+            # En lugar de os.rename(), creamos un .bat helper que espera a que la app termine,
+            # hace el reemplazo, y lanza la nueva versión.
+            exe_name_only = os.path.basename(current_exe)
+            bat_path = os.path.join(exe_dir, "_update_helper.bat")
             
-            os.rename(current_exe, old_exe)
-            # 2. Renombrar new a actual
-            os.rename(new_exe, current_exe)
+            bat_lines = [
+                "@echo off",
+                "chcp 65001 >nul 2>&1",
+                "",
+                ":wait",
+                "ping 127.0.0.1 -n 2 >nul",
+                'tasklist /FI "IMAGENAME eq ' + current_exe.split(os.sep)[-1] + '" 2>nul | find /I "McTools" >nul',
+                "if not errorlevel 1 goto wait",
+                "",
+                'move /Y "' + new_exe + '" "' + current_exe + '" >nul 2>&1',
+                'if exist "' + current_exe + '.old" del /F /Q "' + current_exe + '.old" >nul 2>&1',
+                "",
+                'start "" "' + current_exe + '"',
+                "",
+                '(goto) 2>nul & del "%~f0" >nul 2>&1',
+            ]
+            bat_content = "\r\n".join(bat_lines)
             
-            # 3. Lanzar nueva versión sin heredar variables de entorno de PyInstaller ni bloqueos de Windows
-            env = os.environ.copy()
-            for var in ["_MEIPASS", "TCL_LIBRARY", "TK_LIBRARY"]:
-                if var in env:
-                    del env[var]
+            with open(bat_path, 'w', newline='\r\n') as f:
+                f.write(bat_content)
             
-            # Limpiar referencias de PATH al directorio temporal del padre
-            if "PATH" in env:
-                parent_mei = getattr(sys, '_MEIPASS', '')
-                if parent_mei:
-                    paths = env["PATH"].split(os.pathsep)
-                    paths = [p for p in paths if parent_mei not in p]
-                    env["PATH"] = os.pathsep.join(paths)
+            subprocess.Popen(
+                [bat_path],
+                creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                close_fds=True
+            )
             
-            if platform.system() == "Windows":
-                # DETACHED_PROCESS = 0x00000008
-                subprocess.Popen([current_exe], env=env, creationflags=0x00000008, close_fds=True)
-            else:
-                subprocess.Popen([current_exe], env=env)
-            
-            # 4. Cerrar la app actual
+            # Cerrar la app actual
             os._exit(0)
             
         except Exception as e:
