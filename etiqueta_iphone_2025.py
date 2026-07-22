@@ -120,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.4"
+VERSION = "3.3.5"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2114,6 +2114,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             
             # 1. Crear el batch helper (hace el reemplazo)
             exe_short = exe_name_only.replace('.exe', '')
+            vbs_path = os.path.join(exe_dir, "_update_helper.vbs")
             bat_lines = [
                 "@echo off",
                 "chcp 65001 >nul 2>&1",
@@ -2128,6 +2129,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 "",
                 'start "" "' + current_exe + '"',
                 "",
+                'if exist "' + vbs_path + '" del /F /Q "' + vbs_path + '" >nul 2>&1',
                 '(goto) 2>nul & del "%~f0" >nul 2>&1',
             ]
             bat_content = "\r\n".join(bat_lines)
@@ -2135,9 +2137,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             with open(bat_path, 'w', newline='\r\n') as f:
                 f.write(bat_content)
             
-            # 2. Crear VBS que lanza el batch oculto (0 = ventana oculta)
-            vbs_path = os.path.join(exe_dir, "_update_helper.vbs")
-            vbs_code = 'CreateObject("WScript.Shell").Run "' + bat_path + '", 0, False'
+            # 2. Crear VBS que lanza el batch oculto (0 = ventana oculta, Chr(34) para manejar espacios en rutas)
+            vbs_code = 'CreateObject("WScript.Shell").Run Chr(34) & "' + bat_path + '" & Chr(34), 0, False'
             
             with open(vbs_path, 'w', newline='\r\n') as f:
                 f.write(vbs_code)
