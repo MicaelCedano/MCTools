@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.14"
+VERSION = "3.3.15"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1335,6 +1335,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         version_badge.grid(row=0, column=1, padx=(8, 0), sticky="w")
         
+        self.update_ready = False
+        self.downloaded_new_exe = None
+
         self.btn_update = customtkinter.CTkButton(
             title_container, 
             text="Buscar act.", 
@@ -1343,9 +1346,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             fg_color="#334155",
             hover_color="#475569",
             corner_radius=6,
-            height=18,
-            width=80,
-            command=lambda: self.chequear_actualizaciones_async(manual=True)
+            height=22,
+            width=110,
+            command=self.accion_boton_actualizacion
         )
         self.btn_update.grid(row=0, column=2, padx=(8, 0), sticky="w")
         
@@ -1356,6 +1359,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text_color="#94A3B8"
         )
         subtitle_label.grid(row=1, column=0, sticky="w", pady=(2, 0))
+
+        # Barra de progreso integrada para descargas de actualización (inline, sin popups)
+        self.update_progress = customtkinter.CTkProgressBar(header_frame, height=5, corner_radius=3, fg_color="#0F172A", progress_color="#06B6D4")
+        self.update_progress.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        self.update_progress.set(0)
+        self.update_progress.grid_remove()  # Oculta hasta que se inicie una descarga
 
         # 2. Pestañas (Tabview)
         self.tabview = customtkinter.CTkTabview(
@@ -2422,27 +2431,84 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             # Volver a programar el chequeo periódico cada 15 minutos (900,000 ms) mientras la app esté abierta
             self.after(900000, lambda: self.chequear_actualizaciones_async(manual=False))
 
-    def mostrar_dialogo_actualizacion(self, nueva_version, changelog, exe_url, exe_name, html_url):
-        """Muestra el diálogo informando de la nueva versión con notas del release."""
-        # Evitar abrir múltiples ventanas si ya hay una abierta
-        if hasattr(self, 'ventana_actualizacion') and self.ventana_actualizacion and self.ventana_actualizacion.winfo_exists():
-            return
-        self.ventana_actualizacion = VentanaActualizacionDisponible(self, nueva_version, changelog, exe_url, exe_name, html_url)
+    def accion_boton_actualizacion(self):
+        """Maneja el clic en el botón de actualización según su estado actual."""
+        if getattr(self, 'update_ready', False) and getattr(self, 'downloaded_new_exe', None):
+            self.ejecutar_instalacion_inmediata()
+        else:
+            self.chequear_actualizaciones_async(manual=True)
 
-    def iniciar_descarga_actualizacion(self, exe_url, exe_name, nueva_version):
-        """Crea la ventana de progreso e inicia la descarga."""
-        ventana_progreso = VentanaProgresoActualizacion(self, nueva_version)
+    def chequear_actualizaciones_async(self, manual=False):
+        """Inicia el chequeo de actualizaciones en un hilo secundario."""
+        if getattr(self, 'update_ready', False):
+            return  # Ya hay una versión descargada lista para instalar
+        if manual:
+            self.btn_update.configure(text="Buscando...", fg_color="#334155", state="disabled")
+        
+        thread = threading.Thread(target=self._buscar_actualizaciones_hilo, args=(manual,))
+        thread.daemon = True
+        thread.start()
+
+    def _buscar_actualizaciones_hilo(self, manual):
+        try:
+            url = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest"
+            req = urllib.request.Request(
+                url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+                
+            latest_version_tag = data.get("tag_name", "")
+            latest_version = latest_version_tag.lstrip('v')
+            if not any(c.isdigit() for c in latest_version):
+                release_title = data.get("name", "")
+                if release_title:
+                    latest_version_tag = release_title
+                    latest_version = release_title.lstrip('v')
+            current_ver = VERSION.lstrip('v')
+            
+            if parse_version(latest_version) > parse_version(current_ver):
+                assets = data.get("assets", [])
+                exe_url = None
+                for asset in assets:
+                    name = asset.get("name", "")
+                    if name.endswith(".exe"):
+                        exe_url = asset.get("browser_download_url")
+                        break
+                
+                if exe_url and getattr(sys, 'frozen', False):
+                    # Iniciar descarga inline directamente (sin popup)
+                    self.after(100, lambda: self.iniciar_descarga_inline(exe_url, latest_version_tag))
+                else:
+                    self.after(100, lambda: self.btn_update.configure(text="¡Nueva v" + latest_version + "!", fg_color="#EF4444", state="normal"))
+            else:
+                self.after(100, lambda: self.btn_update.configure(text="Al día", fg_color="#10B981", state="normal"))
+                if manual:
+                    self.after(200, lambda: messagebox.showinfo("Actualizado", f"Ya tienes la versión más reciente (v{VERSION})."))
+        except Exception as e:
+            print(f"Error al buscar actualizaciones en GitHub: {e}")
+            self.after(100, lambda: self.btn_update.configure(text="Buscar act.", fg_color="#334155", state="normal"))
+            if manual:
+                self.after(200, lambda: messagebox.showerror("Error", f"No se pudo buscar actualizaciones:\n{e}"))
+        finally:
+            self.after(900000, lambda: self.chequear_actualizaciones_async(manual=False))
+
+    def iniciar_descarga_inline(self, exe_url, nueva_version_tag):
+        """Inicia la descarga de la nueva versión mostrando la barra de progreso inline."""
+        self.btn_update.configure(text="Descargando 0%", fg_color="#0284C7", state="disabled")
+        self.update_progress.grid()  # Mostrar la barra de progreso inline
+        self.update_progress.set(0)
         
         thread = threading.Thread(
-            target=self._hilo_descarga_reemplazo,
-            args=(exe_url, exe_name, ventana_progreso)
+            target=self._hilo_descarga_inline,
+            args=(exe_url, nueva_version_tag)
         )
         thread.daemon = True
         thread.start()
 
-    def _hilo_descarga_reemplazo(self, exe_url, exe_name, ventana_progreso):
+    def _hilo_descarga_inline(self, exe_url, nueva_version_tag):
         try:
-            current_exe = sys.executable
             temp_dir = tempfile.gettempdir()
             new_exe = os.path.join(temp_dir, f"mctools_update_{int(time.time())}.exe")
             
@@ -2451,7 +2517,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
             
-            with urllib.request.urlopen(req, timeout=30) as response:
+            with urllib.request.urlopen(req, timeout=45) as response:
                 total_size = int(response.info().get('Content-Length', 0))
                 bytes_downloaded = 0
                 
@@ -2466,18 +2532,45 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                         if total_size > 0:
                             progreso = bytes_downloaded / total_size
                             porcentaje = int(progreso * 100)
-                            descargado_mb = bytes_downloaded / (1024 * 1024)
-                            total_mb = total_size / (1024 * 1024)
-                            texto_status = f"Descargado {descargado_mb:.2f} MB de {total_mb:.2f} MB"
-                            
-                            # Actualizar UI
-                            self.after(0, lambda val=progreso, pct=porcentaje, txt=texto_status: ventana_progreso.actualizar_progreso(val, pct, txt))
+                            self.after(0, lambda p=progreso, pct=porcentaje: self._actualizar_progreso_inline(p, pct))
             
-                self.after(0, lambda: ventana_progreso.actualizar_progreso(1.0, 100, "Instalación lista. Reiniciando..."))
+            # Descarga completada 100%
+            self.after(0, lambda: self._finalizar_descarga_inline(nueva_version_tag, new_exe))
             
-            # En Windows NO se puede renombrar/mover un .exe en ejecución (OS bloquea el archivo).
-            # Solución 100% fiable: Script Batch helper en %TEMP% con bucle de reintento lanzado vía wscript.exe
+        except Exception as e:
+            print(f"Error en descarga inline: {e}")
+            self.after(0, self._error_descarga_inline)
+
+    def _actualizar_progreso_inline(self, progreso, porcentaje):
+        self.update_progress.set(progreso)
+        self.btn_update.configure(text=f"Descargando {porcentaje}%")
+
+    def _finalizar_descarga_inline(self, nueva_version_tag, new_exe):
+        self.update_progress.grid_remove()  # Ocultar barra de progreso
+        self.update_ready = True
+        self.downloaded_new_exe = new_exe
+        self.btn_update.configure(
+            text="✨ Instalar ahora", 
+            fg_color="#10B981", 
+            hover_color="#059669", 
+            text_color="#FFFFFF",
+            state="normal"
+        )
+
+    def _error_descarga_inline(self):
+        self.update_progress.grid_remove()
+        self.btn_update.configure(text="Buscar act.", fg_color="#334155", state="normal")
+
+    def ejecutar_instalacion_inmediata(self):
+        """Ejecuta la sustitución del ejecutable e inicia la nueva versión."""
+        if not hasattr(self, 'downloaded_new_exe') or not self.downloaded_new_exe or not os.path.exists(self.downloaded_new_exe):
+            messagebox.showerror("Error", "No se encontró el archivo de actualización listo para instalar.")
+            return
+            
+        try:
+            current_exe = sys.executable
             temp_dir = tempfile.gettempdir()
+            new_exe = self.downloaded_new_exe
             bat_path = os.path.join(temp_dir, "mctools_updater.bat")
             vbs_path = os.path.join(temp_dir, "mctools_launcher.vbs")
             
@@ -2506,32 +2599,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             with open(vbs_path, 'w', encoding='cp1252') as f:
                 f.write(vbs_code)
                 
-            # Lanzar el Script VBScript (100% invisible)
             subprocess.Popen(['wscript.exe', vbs_path])
-            
-            # Cerrar la app actual para liberar inmediatamente el ejecutable
             time.sleep(0.3)
             os._exit(0)
-            
         except Exception as e:
-            # En caso de error, intentar borrar .new y mostrar error
-            try:
-                if 'new_exe' in locals() and os.path.exists(new_exe):
-                    os.remove(new_exe)
-            except Exception:
-                pass
-                
-            self.after(0, lambda err=e: self._mostrar_error_actualizacion(err, ventana_progreso))
-
-    def _mostrar_error_actualizacion(self, error, ventana_progreso):
-        try:
-            ventana_progreso.destroy()
-        except Exception:
-            pass
-        messagebox.showerror(
-            "Error de Actualización",
-            f"Ocurrió un error al descargar o instalar la actualización:\n\n{error}"
-        )
+            messagebox.showerror("Error de Instalación", f"No se pudo iniciar la actualización:\n{e}")
 
 
 if __name__ == "__main__":
