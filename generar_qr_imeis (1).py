@@ -154,6 +154,15 @@ def detectar_sumatra_si_no_configurado():
         except Exception: pass
     print("ADVERTENCIA: SumatraPDF no se detectó automáticamente.")
 
+def es_sumatra_configurado():
+    """Retorna True si SumatraPDF está configurado/detectado y existe en disco."""
+    global SUMATRA_PDF_PATH
+    if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH) and os.path.isfile(SUMATRA_PDF_PATH):
+        return True
+    detectar_sumatra_si_no_configurado()
+    return bool(SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH) and os.path.isfile(SUMATRA_PDF_PATH))
+
+
 def cleanup_temp_files():
     """Elimina los archivos temporales creados durante la sesión."""
     for temp_file_path in list(temporary_files_to_delete):
@@ -555,7 +564,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         customtkinter.CTkButton(pdf_buttons_frame, text="Imprimir", command=self.imprimir).grid(row=0, column=0, padx=0, sticky='ew')
         
         # Botón de Configuración
-        customtkinter.CTkButton(self.controls_frame, text="Configurar SumatraPDF", command=self.configurar_ruta_sumatra_manualmente).grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.config_sumatra_btn = customtkinter.CTkButton(self.controls_frame, text="Configurar SumatraPDF", command=self.configurar_ruta_sumatra_manualmente)
+        self.config_sumatra_btn.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.actualizar_estado_sumatra_ui()
+
         
         # Etiqueta de autor
         customtkinter.CTkLabel(self.controls_frame, text="Hecho por Micael  ", font=customtkinter.CTkFont(size=10, slant="italic"), text_color="gray50").grid(row=2, column=0, padx=20, pady=(10,10), sticky="sw")
@@ -770,17 +782,60 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.logo_path_var.set(filepath)
             guardar_logo_config(filepath)
 
+    def actualizar_estado_sumatra_ui(self):
+        """Actualiza el texto y apariencia del botón de SumatraPDF según su disponibilidad."""
+        if hasattr(self, 'config_sumatra_btn'):
+            if es_sumatra_configurado():
+                self.config_sumatra_btn.configure(
+                    text="SumatraPDF: Detectado ✓",
+                    fg_color="#065F46",
+                    text_color="#34D399",
+                    hover_color="#047857"
+                )
+            else:
+                self.config_sumatra_btn.configure(
+                    text="SumatraPDF: No Detectado ⚠️",
+                    fg_color="#92400E",
+                    text_color="#FBBF24",
+                    hover_color="#B45309"
+                )
+
     def configurar_ruta_sumatra_manualmente(self):
         global SUMATRA_PDF_PATH
         if platform.system() != "Windows":
-            messagebox.showinfo("Información", "Esta opción de configuración es solo para el sistema operativo Windows.")
+            messagebox.showinfo("Información", "Esta opción de configuración es solo para Windows.")
             return
-        filepath = filedialog.askopenfilename(title="Localizar el ejecutable SumatraPDF.exe", filetypes=[("Ejecutable", "SumatraPDF.exe")])
-        if filepath and os.path.basename(filepath).lower() == 'sumatrapdf.exe':
-            SUMATRA_PDF_PATH = filepath
-            guardar_config_sumatra()
-            messagebox.showinfo("Éxito", f"La ruta de SumatraPDF ha sido establecida a:\n{filepath}")
-        elif filepath: messagebox.showerror("Archivo Incorrecto", "Por favor, selecciona el archivo 'SumatraPDF.exe'.")
+
+        if es_sumatra_configurado():
+            msg = (
+                f"SumatraPDF está DETECTADO Y CONFIGURADO:\n\nRuta actual:\n{SUMATRA_PDF_PATH}\n\n"
+                "• [Sí]: Seleccionar otra ruta ejecutable manualmente.\n"
+                "• [No]: Re-buscar automáticamente en el sistema.\n"
+                "• [Cancelar]: Mantener la ruta actual."
+            )
+            respuesta = messagebox.askyesnocancel("Estado de SumatraPDF", msg)
+            if respuesta is None:
+                return
+            elif respuesta is False:
+                SUMATRA_PDF_PATH = None
+                detectar_sumatra_si_no_configurado()
+                self.actualizar_estado_sumatra_ui()
+                if SUMATRA_PDF_PATH and os.path.exists(SUMATRA_PDF_PATH):
+                    messagebox.showinfo("Éxito", f"SumatraPDF detectado en:\n{SUMATRA_PDF_PATH}")
+                else:
+                    messagebox.showwarning("No Encontrado", "No se encontró SumatraPDF automáticamente.")
+                return
+
+        filepath = filedialog.askopenfilename(title="Localizar SumatraPDF.exe", filetypes=[("Ejecutable", "SumatraPDF.exe"), ("Todos los archivos", "*.*")])
+        if filepath and os.path.exists(filepath) and os.path.isfile(filepath):
+            if os.path.basename(filepath).lower() == 'sumatrapdf.exe' or filepath.lower().endswith('.exe'):
+                SUMATRA_PDF_PATH = filepath
+                guardar_config_sumatra()
+                self.actualizar_estado_sumatra_ui()
+                messagebox.showinfo("Éxito", f"SumatraPDF configurado en:\n{filepath}")
+            else:
+                messagebox.showerror("Archivo Incorrecto", "Por favor selecciona el ejecutable SumatraPDF.exe.")
+        self.actualizar_estado_sumatra_ui()
 
 
 if __name__ == "__main__":
