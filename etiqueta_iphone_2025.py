@@ -120,7 +120,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.3.5"
+VERSION = "3.3.6"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -739,6 +739,109 @@ def _generar_etiqueta_qr_pdf_temporal(modelo, imeis, path_logo_pil):
     c.save()
     return temp_pdf_path
 
+# --- FUNCIÓN DE LECTURA E IMPORTACIÓN DE ARCHIVOS (EXCEL / CSV / TXT) ---
+def extraer_imeis_y_modelo_de_archivo(filepath):
+    """
+    Lee un archivo .xlsx, .csv, .tsv o .txt y extrae todos los IMEIs (15 dígitos)
+    y opcionalmente el modelo de dispositivo si se encuentra en la hoja o texto.
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+    imeis = []
+    modelo_encontrado = None
+    imei_regex = re.compile(r'\b\d{15}\b')
+    lines_raw = []
+
+    if ext == '.xlsx':
+        try:
+            import zipfile, xml.etree.ElementTree as ET
+            with zipfile.ZipFile(filepath, 'r') as z:
+                shared_strings = []
+                if 'xl/sharedStrings.xml' in z.namelist():
+                    xml_content = z.read('xl/sharedStrings.xml')
+                    tree = ET.fromstring(xml_content)
+                    ns = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                    for si in tree.findall('.//ns:si', ns):
+                        t_nodes = si.findall('.//ns:t', ns)
+                        text = "".join([t.text for t in t_nodes if t.text])
+                        shared_strings.append(text)
+                
+                sheet_files = [f for f in z.namelist() if f.startswith('xl/worksheets/sheet')]
+                if sheet_files:
+                    xml_content = z.read(sheet_files[0])
+                    tree = ET.fromstring(xml_content)
+                    ns = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                    for row in tree.findall('.//ns:row', ns):
+                        fila = []
+                        for c in row.findall('.//ns:c', ns):
+                            t_attr = c.get('t', '')
+                            v_node = c.find('ns:v', ns)
+                            val = ""
+                            if v_node is not None and v_node.text is not None:
+                                val = v_node.text
+                                if t_attr == 's' and val.isdigit():
+                                    idx = int(val)
+                                    val = shared_strings[idx] if idx < len(shared_strings) else val
+                            else:
+                                is_node = c.find('ns:is', ns)
+                                if is_node is not None:
+                                    t_nodes = is_node.findall('.//ns:t', ns)
+                                    val = "".join([t.text for t in t_nodes if t.text])
+                            if val:
+                                fila.append(val)
+                        if fila:
+                            lines_raw.append(" ".join(fila))
+                            for cell in fila:
+                                cell_clean = cell.strip()
+                                if any(kw in cell_clean.lower() for kw in ["iphone", "ipad", "samsung", "xiaomi", "redmi", "pixel"]):
+                                    if not modelo_encontrado:
+                                        modelo_encontrado = cell_clean
+        except Exception as e:
+            print(f"Error al leer archivo Excel: {e}")
+
+    elif ext in ['.csv', '.tsv']:
+        try:
+            import csv
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                sample = f.read(2048)
+                f.seek(0)
+                delimiter = '\t' if ext == '.tsv' or '\t' in sample else (',' if ',' in sample else ';')
+                reader = csv.reader(f, delimiter=delimiter)
+                for row in reader:
+                    lines_raw.append(" ".join(row))
+                    for cell in row:
+                        cell_clean = cell.strip()
+                        if any(kw in cell_clean.lower() for kw in ["iphone", "ipad", "samsung", "xiaomi", "redmi", "pixel"]):
+                            if not modelo_encontrado:
+                                modelo_encontrado = cell_clean
+        except Exception as e:
+            print(f"Error al leer archivo CSV/TSV: {e}")
+    else:  # .txt o similar
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    lines_raw.append(line.strip())
+        except Exception as e:
+            print(f"Error al leer archivo de texto: {e}")
+
+    # Extraer IMEIs usando regex estricto de 15 dígitos
+    texto_completo = "\n".join(lines_raw)
+    encontrados = imei_regex.findall(texto_completo)
+
+    if not encontrados:
+        for line in lines_raw:
+            cleaned = "".join(c for c in line if c.isdigit())
+            if len(cleaned) == 15:
+                encontrados.append(cleaned)
+
+    # Eliminar duplicados preservando el orden
+    seen = set()
+    for imei in encontrados:
+        if imei not in seen:
+            seen.add(imei)
+            imeis.append(imei)
+
+    return imeis, modelo_encontrado
+
 # --- Funciones Auxiliares para Actualización ---
 def limpiar_archivos_antiguos():
     """Elimina el archivo ejecutable antiguo (.old) si existe."""
@@ -1267,9 +1370,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         limpiar_frame = customtkinter.CTkFrame(imeis_card, fg_color="transparent")
         limpiar_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
-        limpiar_frame.grid_columnconfigure((0, 1), weight=1)
-        customtkinter.CTkButton(limpiar_frame, text="Limpiar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_imeis).grid(row=0, column=0, padx=(0, 4), sticky="ew")
-        customtkinter.CTkButton(limpiar_frame, text="Pegar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_imeis).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+        limpiar_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        customtkinter.CTkButton(limpiar_frame, text="Limpiar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_imeis).grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        customtkinter.CTkButton(limpiar_frame, text="Pegar IMEIs", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_imeis).grid(row=0, column=1, padx=2, sticky="ew")
+        customtkinter.CTkButton(limpiar_frame, text="📥 Cargar Excel/CSV", height=28, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.importar_archivo_imeis).grid(row=0, column=2, padx=(2, 0), sticky="ew")
 
         # Tarjeta Logo (Compartida)
         logo_card_qr = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
@@ -1340,7 +1444,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         limpiar_importar_frame = customtkinter.CTkFrame(actions_proc, fg_color="transparent")
         limpiar_importar_frame.grid(row=1, column=0, sticky="ew")
-        limpiar_importar_frame.grid_columnconfigure((0, 1), weight=1)
+        limpiar_importar_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
         customtkinter.CTkButton(
             limpiar_importar_frame,
@@ -1352,8 +1456,20 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             height=32,
             corner_radius=8,
             command=self.proc_limpiar_campos
-        ).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        ).grid(row=0, column=0, padx=(0, 2), sticky="ew")
         
+        customtkinter.CTkButton(
+            limpiar_importar_frame,
+            text="📥 Cargar Excel",
+            fg_color="#10B981",
+            hover_color="#059669",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.proc_importar_archivo
+        ).grid(row=0, column=1, padx=2, sticky="ew")
+
         customtkinter.CTkButton(
             limpiar_importar_frame,
             text="Ver Historial",
@@ -1364,7 +1480,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             height=32,
             corner_radius=8,
             command=self.proc_mostrar_historial
-        ).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+        ).grid(row=0, column=2, padx=(2, 0), sticky="ew")
 
 
         # 3. Contenedor Inferior (Configuración & Autor)
@@ -1463,13 +1579,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         proc_actions = customtkinter.CTkFrame(self.procesador_output_frame, fg_color="transparent")
         proc_actions.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="ew")
-        proc_actions.grid_columnconfigure((0, 1), weight=1)
+        proc_actions.grid_columnconfigure((0, 1, 2), weight=1)
         
         self.proc_copy_btn = customtkinter.CTkButton(proc_actions, text="Copiar al Portapapeles", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_copiar_portapapeles, state="disabled")
-        self.proc_copy_btn.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        self.proc_copy_btn.grid(row=0, column=0, padx=(0, 4), sticky="ew")
         
         self.proc_save_btn = customtkinter.CTkButton(proc_actions, text="Guardar como TXT", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_guardar_txt, state="disabled")
-        self.proc_save_btn.grid(row=0, column=1, padx=(6, 0), sticky="ew")
+        self.proc_save_btn.grid(row=0, column=1, padx=2, sticky="ew")
+
+        self.proc_export_excel_btn = customtkinter.CTkButton(proc_actions, text="Exportar a Excel/CSV", fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_exportar_excel_csv, state="disabled")
+        self.proc_export_excel_btn.grid(row=0, column=2, padx=(4, 0), sticky="ew")
         
         # Grid inicial para el procesador (oculto)
         self.procesador_output_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
@@ -1808,6 +1927,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.proc_count_label.configure(text=f"{len(imeis_unicos)} IMEIs")
             self.proc_copy_btn.configure(state="normal")
             self.proc_save_btn.configure(state="normal")
+            self.proc_export_excel_btn.configure(state="normal")
             # Guardar en el historial
             self.proc_guardar_en_historial(texto_crudo, len(imeis_unicos), imeis_unicos)
         else:
@@ -1815,6 +1935,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.proc_count_label.configure(text="0 IMEIs")
             self.proc_copy_btn.configure(state="disabled")
             self.proc_save_btn.configure(state="disabled")
+            self.proc_export_excel_btn.configure(state="disabled")
 
         self.proc_output_textbox.configure(state="disabled")
 
@@ -1831,6 +1952,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.proc_count_label.configure(text="0 IMEIs")
         self.proc_copy_btn.configure(state="disabled")
         self.proc_save_btn.configure(state="disabled")
+        self.proc_export_excel_btn.configure(state="disabled")
         self.proc_input_textbox.focus_set()
 
     def proc_guardar_en_historial(self, texto_crudo, count, imeis_unicos):
@@ -1927,6 +2049,107 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 messagebox.showinfo("Guardado", f"Archivo de texto guardado con éxito en:\n'{filepath}'", parent=self)
         except Exception as e:
             messagebox.showerror("Error al Guardar", f"No se pudo guardar el archivo.\nError: {e}", parent=self)
+
+    def importar_archivo_imeis(self):
+        """Permite al usuario seleccionar un archivo Excel/CSV/TXT e importa los IMEIs al cuadro de texto."""
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo de IMEIs (Excel / CSV / TXT)",
+            filetypes=[
+                ("Archivos de Datos", "*.xlsx;*.csv;*.tsv;*.txt"),
+                ("Excel (*.xlsx)", "*.xlsx"),
+                ("CSV / TSV (*.csv, *.tsv)", "*.csv;*.tsv"),
+                ("Texto (*.txt)", "*.txt"),
+                ("Todos los archivos", "*.*")
+            ],
+            parent=self
+        )
+        if not filepath:
+            return
+
+        imeis, modelo_detectado = extraer_imeis_y_modelo_de_archivo(filepath)
+        if not imeis:
+            messagebox.showwarning("Sin IMEIs", "No se encontraron números de IMEI válidos (15 dígitos) en el archivo seleccionado.", parent=self)
+            return
+
+        # Si el cuadro de texto tiene el placeholder, limpiarlo
+        texto_actual = self.imeis_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.placeholder_text:
+            self.imeis_textbox.delete("1.0", tk.END)
+            self.imeis_textbox.configure(text_color="#F8FAFC")
+
+        # Insertar IMEIs importados
+        self.imeis_textbox.insert(tk.END, "\n".join(imeis) + "\n")
+        
+        # Si se detectó un modelo y el campo Modelo está vacío, autocompletar
+        if modelo_detectado and not self.modelo_var.get().strip():
+            self.modelo_var.set(modelo_detectado)
+
+        self.actualizar_contador_imeis()
+        self.schedule_preview_update()
+
+        messagebox.showinfo("Importación Exitosa", f"Se importaron {len(imeis)} IMEIs correctamente desde:\n{os.path.basename(filepath)}", parent=self)
+
+    def proc_importar_archivo(self):
+        """Importa un archivo Excel/CSV/TXT directamente en la entrada del Procesador."""
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo para Procesador (Excel / CSV / TXT)",
+            filetypes=[
+                ("Archivos de Datos", "*.xlsx;*.csv;*.tsv;*.txt"),
+                ("Excel (*.xlsx)", "*.xlsx"),
+                ("CSV / TSV (*.csv, *.tsv)", "*.csv;*.tsv"),
+                ("Texto (*.txt)", "*.txt"),
+                ("Todos los archivos", "*.*")
+            ],
+            parent=self
+        )
+        if not filepath:
+            return
+
+        imeis, _ = extraer_imeis_y_modelo_de_archivo(filepath)
+        if not imeis:
+            messagebox.showwarning("Sin IMEIs", "No se encontraron IMEIs válidos en el archivo seleccionado.", parent=self)
+            return
+
+        self.proc_input_textbox.delete("1.0", tk.END)
+        self.proc_input_textbox.insert("1.0", "\n".join(imeis))
+        self.proc_input_textbox.configure(text_color="#F8FAFC")
+        self.proc_extraer_imeis()
+        messagebox.showinfo("Importación Exitosa", f"Se cargaron {len(imeis)} IMEIs en el Procesador.", parent=self)
+
+    def proc_exportar_excel_csv(self):
+        """Exporta la lista de IMEIs procesados a un archivo .csv o .txt delimitado por comas."""
+        texto_salida = self.proc_output_textbox.get("1.0", tk.END).strip()
+        if not texto_salida or "No se encontraron IMEIs válidos." in texto_salida:
+            return
+
+        imeis = [line.strip() for line in texto_salida.split("\n") if line.strip()]
+        if not imeis:
+            return
+
+        filepath = filedialog.asksaveasfilename(
+            title="Exportar IMEIs Procesados a Excel / CSV",
+            defaultextension=".csv",
+            filetypes=[("Archivo CSV (*.csv)", "*.csv"), ("Documento de Texto (*.txt)", "*.txt")],
+            initialfile="imeis_procesados.csv",
+            parent=self
+        )
+        if not filepath:
+            return
+
+        try:
+            import csv, datetime
+            now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            modelo = self.modelo_var.get().strip() or "General"
+
+            with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
+                writer = csv.writer(f)
+                writer.writerow(["No", "IMEI", "Modelo", "Fecha Registro"])
+                for idx, imei in enumerate(imeis, 1):
+                    writer.writerow([idx, f"'{imei}", modelo, now_str])
+
+            messagebox.showinfo("Exportación Exitosa", f"Se exportaron {len(imeis)} IMEIs a:\n{os.path.basename(filepath)}", parent=self)
+        except Exception as e:
+            messagebox.showerror("Error al Exportar", f"No se pudo exportar el archivo:\n{e}", parent=self)
 
     def on_proc_text_change(self, event):
         """Se ejecuta cuando cambia el texto de entrada en el procesador."""
