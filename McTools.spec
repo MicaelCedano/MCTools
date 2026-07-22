@@ -1,4 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
+import os
+import customtkinter
+import PIL
 from PyInstaller.utils.hooks import collect_all
 
 datas = [('logo.ico', '.'), ('logo.png', '.')]
@@ -19,6 +22,14 @@ hiddenimports = [
     'win32api',
     'win32con',
 ]
+
+# Incluir carpeta completa de customtkinter (assets, themes, fonts, json, etc)
+ctk_path = os.path.dirname(customtkinter.__file__)
+datas.append((ctk_path, 'customtkinter'))
+
+# Incluir carpeta completa de PIL
+pil_path = os.path.dirname(PIL.__file__)
+datas.append((pil_path, 'PIL'))
 
 for pkg in ['PIL', 'customtkinter', 'reportlab', 'barcode', 'qrcode']:
     try:
