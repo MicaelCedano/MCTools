@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.1"
+VERSION = "3.5.2"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1511,6 +1511,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.envio_destinatario_var = tk.StringVar()
         self.envio_origen_var = tk.StringVar()
         self.envio_destino_var = tk.StringVar()
+        self.envio_cantidad_var = tk.StringVar(value="1")
         self._load_destinatarios()
 
         # 1. Banner de Encabezado (Logo & Versión)
@@ -2055,11 +2056,19 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Destino / Envío
         customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección de ENVÍO", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(4, 2), sticky="w")
         destino_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
-        destino_entry_frame.grid(row=3, column=0, padx=12, pady=(0, 10), sticky="ew")
+        destino_entry_frame.grid(row=3, column=0, padx=12, pady=(0, 8), sticky="ew")
         destino_entry_frame.grid_columnconfigure(0, weight=1)
         self.destino_entry_envio = customtkinter.CTkEntry(destino_entry_frame, textvariable=self.envio_destino_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
         self.destino_entry_envio.grid(row=0, column=0, padx=(0, 6), sticky="ew")
         customtkinter.CTkButton(destino_entry_frame, text="📍 Maps", width=65, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=lambda: self._open_gmaps("destino")).grid(row=0, column=1)
+
+        # Cantidad de Etiquetas a Imprimir
+        customtkinter.CTkLabel(datos_card, text="Cantidad de Etiquetas a Imprimir", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=4, column=0, padx=12, pady=(4, 2), sticky="w")
+        cantidad_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
+        cantidad_entry_frame.grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
+        cantidad_entry_frame.grid_columnconfigure(0, weight=1)
+        self.cantidad_entry_envio = customtkinter.CTkEntry(cantidad_entry_frame, textvariable=self.envio_cantidad_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.cantidad_entry_envio.grid(row=0, column=0, sticky="ew")
 
         # Acciones Etiqueta 2x4
         actions_envio = customtkinter.CTkFrame(self.tab_envio, fg_color="transparent")
@@ -2069,7 +2078,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
-        for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var]:
+        for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
             var.trace_add("write", self.schedule_preview_update)
             
         # Evento específico para recargar logo si cambia la ruta
@@ -2307,7 +2316,14 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             messagebox.showerror("Campo Obligatorio", "El campo 'Nombre del DESTINATARIO' es obligatorio.")
             return
 
-        cantidad = 1
+        cantidad_str = self.envio_cantidad_var.get().strip() if hasattr(self, 'envio_cantidad_var') else "1"
+        try:
+            cantidad = int(cantidad_str)
+            if cantidad <= 0: raise ValueError("Debe ser mayor a 0")
+        except ValueError:
+            messagebox.showerror("Error en Cantidad", "La cantidad de etiquetas debe ser un número entero mayor que cero.", parent=self)
+            return
+
         temp_pdf_path = _generar_etiqueta_2x4_pdf_temporal(
             destinatario, origen, destino, cantidad
         )
