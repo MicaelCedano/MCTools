@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.0"
+VERSION = "3.5.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -917,32 +917,24 @@ def _generar_etiqueta_2x4_pil_image(destinatario, origen, destino):
         font_dest = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(font_size_pt * DPI / 72))
         
     dest_w = draw.textlength(destinatario_upper, font=font_dest)
-    y_actual += int(0.3 * DPI)
+    y_actual += int(0.35 * DPI)
     draw.text(((LABEL_WIDTH_PX - dest_w) // 2, y_actual), destinatario_upper, fill="black", font=font_dest)
     
-    qr_size_px = int(1.1 * DPI) # ~330px
-    y_qr = LABEL_HEIGHT_PX - qr_size_px - int(0.55 * DPI)
-    font_help = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(8 * DPI / 72))
+    # QR grande en el centro para el envío
+    qr_size_px = int(1.65 * DPI) # ~495px (QR grande centrado)
+    y_qr = y_actual + int(0.40 * DPI)
+    x_qr = (LABEL_WIDTH_PX - qr_size_px) // 2
     
-    if origen.strip():
-        link_o = _generar_google_maps_link(origen)
-        qr_img_o = _crear_qr_pil(link_o, qr_size_px)
-        if qr_img_o:
-            x_o = int(0.4 * DPI)
-            image.paste(qr_img_o, (x_o, y_qr))
-            help_txt_o = "Escanear para ver origen"
-            help_w_o = draw.textlength(help_txt_o, font=font_help)
-            draw.text((x_o + (qr_size_px - help_w_o) // 2, y_qr + qr_size_px + 8), help_txt_o, fill="black", font=font_help)
-            
-    if destino.strip():
-        link_d = _generar_google_maps_link(destino)
-        qr_img_d = _crear_qr_pil(link_d, qr_size_px)
-        if qr_img_d:
-            x_d = LABEL_WIDTH_PX - qr_size_px - int(0.4 * DPI)
-            image.paste(qr_img_d, (x_d, y_qr))
-            help_txt_d = "Escanear para ver destino"
-            help_w_d = draw.textlength(help_txt_d, font=font_help)
-            draw.text((x_d + (qr_size_px - help_w_d) // 2, y_qr + qr_size_px + 8), help_txt_d, fill="black", font=font_help)
+    ubicacion_qr = destino.strip() if destino.strip() else origen.strip()
+    if ubicacion_qr:
+        link_qr = _generar_google_maps_link(ubicacion_qr)
+        qr_img = _crear_qr_pil(link_qr, qr_size_px)
+        if qr_img:
+            image.paste(qr_img, (x_qr, y_qr))
+            font_help = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(9 * DPI / 72))
+            help_txt = "Escanear para ver envío"
+            help_w = draw.textlength(help_txt, font=font_help)
+            draw.text(((LABEL_WIDTH_PX - help_w) // 2, y_qr + qr_size_px + 10), help_txt, fill="black", font=font_help)
 
     return image
 
@@ -962,16 +954,14 @@ def _dibujar_etiqueta_2x4_canvas(c, nombre_destinatario_data, origen_data, desti
     LABEL_WIDTH_PT = 4 * inch
     LABEL_HEIGHT_PT = 3 * inch
     ETIQUETA_MARGEN_GENERAL_PT = 15
-    ETIQUETA_MARGEN_SUPERIOR_TEXTO_PT = 50 
-    ETIQUETA_ESPACIO_NOMBRE_A_QR_SUPERIOR = 15
+    ETIQUETA_MARGEN_SUPERIOR_TEXTO_PT = 45 
     ETIQUETA_FONT_TITULO_SIZE = 14
     ETIQUETA_FONT_DESTINATARIO_MAX_SIZE = 30
     ETIQUETA_FONT_DESTINATARIO_MIN_SIZE = 10
-    ETIQUETA_FONT_QR_HELP_SIZE = 7
+    ETIQUETA_FONT_QR_HELP_SIZE = 8
     ETIQUETA_FONT_PRINCIPAL_BOLD = "Times-Bold"
     ETIQUETA_FONT_QR_HELPER = "Helvetica"
-    ETIQUETA_QR_SIZE_PT = 60
-    ETIQUETA_ESPACIO_QR_A_TEXTO_AYUDA = 3
+    ETIQUETA_QR_SIZE_PT = 95  # QR grande centrado
 
     y_actual = LABEL_HEIGHT_PT - ETIQUETA_MARGEN_SUPERIOR_TEXTO_PT
     c.setFont(ETIQUETA_FONT_PRINCIPAL_BOLD, ETIQUETA_FONT_TITULO_SIZE)
@@ -991,29 +981,17 @@ def _dibujar_etiqueta_2x4_canvas(c, nombre_destinatario_data, origen_data, desti
     y_actual -= (tam_fuente * 0.9)
     c.drawCentredString(LABEL_WIDTH_PT / 2, y_actual, nombre_destinatario_upper)
     
-    y_superior_qrs = y_actual - (tam_fuente * 0.3) - ETIQUETA_ESPACIO_NOMBRE_A_QR_SUPERIOR
-    y_base_qrs = y_superior_qrs - ETIQUETA_QR_SIZE_PT
-    y_texto_ayuda = y_base_qrs - ETIQUETA_ESPACIO_QR_A_TEXTO_AYUDA
-    
-    qr_origen_x = ETIQUETA_MARGEN_GENERAL_PT
-    qr_destino_x = LABEL_WIDTH_PT - ETIQUETA_MARGEN_GENERAL_PT - ETIQUETA_QR_SIZE_PT
-
-    if origen_data.strip():
-        qr_o_path = _generar_qr_gmaps_temp(origen_data)
-        if qr_o_path and os.path.exists(qr_o_path):
-            c.drawImage(ReportLabImageReader(qr_o_path), qr_origen_x, y_base_qrs, width=ETIQUETA_QR_SIZE_PT, height=ETIQUETA_QR_SIZE_PT, mask='auto')
+    # QR Único Grande Centrado
+    ubicacion_qr = destino_data.strip() if destino_data.strip() else origen_data.strip()
+    if ubicacion_qr:
+        qr_path = _generar_qr_gmaps_temp(ubicacion_qr)
+        if qr_path and os.path.exists(qr_path):
+            qr_x = (LABEL_WIDTH_PT - ETIQUETA_QR_SIZE_PT) / 2
+            y_qr = y_actual - (tam_fuente * 0.3) - 15 - ETIQUETA_QR_SIZE_PT
+            c.drawImage(ReportLabImageReader(qr_path), qr_x, y_qr, width=ETIQUETA_QR_SIZE_PT, height=ETIQUETA_QR_SIZE_PT, mask='auto')
             c.setFont(ETIQUETA_FONT_QR_HELPER, ETIQUETA_FONT_QR_HELP_SIZE)
-            c.drawCentredString(qr_origen_x + ETIQUETA_QR_SIZE_PT / 2, y_texto_ayuda, "Escanear para ver origen")
-            try: os.remove(qr_o_path)
-            except: pass
-
-    if destino_data.strip():
-        qr_d_path = _generar_qr_gmaps_temp(destino_data)
-        if qr_d_path and os.path.exists(qr_d_path):
-            c.drawImage(ReportLabImageReader(qr_d_path), qr_destino_x, y_base_qrs, width=ETIQUETA_QR_SIZE_PT, height=ETIQUETA_QR_SIZE_PT, mask='auto')
-            c.setFont(ETIQUETA_FONT_QR_HELPER, ETIQUETA_FONT_QR_HELP_SIZE)
-            c.drawCentredString(qr_destino_x + ETIQUETA_QR_SIZE_PT / 2, y_texto_ayuda, "Escanear para ver destino")
-            try: os.remove(qr_d_path)
+            c.drawCentredString(LABEL_WIDTH_PT / 2, y_qr - 10, "Escanear para ver envío")
+            try: os.remove(qr_path)
             except: pass
 
 def _generar_etiqueta_2x4_pdf_temporal(destinatario, origen, destino, cantidad=1):
@@ -1613,7 +1591,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
         self.tab_procesador = self.tabview.add("Procesador")
-        self.tab_envio = self.tabview.add("Etiqueta 2x4")
+        self.tab_envio = self.tabview.add("Gestión de Destinatario")
         
         # Configure columns inside tabs
         self.tab_barcode.grid_columnconfigure(0, weight=1)
@@ -2074,19 +2052,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.destinatario_entry_envio = customtkinter.CTkEntry(dest_entry_frame, textvariable=self.envio_destinatario_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
         self.destinatario_entry_envio.grid(row=0, column=0, sticky="ew")
 
-        # Origen
-        customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección ORIGEN", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(4, 2), sticky="w")
-        origen_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
-        origen_entry_frame.grid(row=3, column=0, padx=12, pady=(0, 8), sticky="ew")
-        origen_entry_frame.grid_columnconfigure(0, weight=1)
-        self.origen_entry_envio = customtkinter.CTkEntry(origen_entry_frame, textvariable=self.envio_origen_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
-        self.origen_entry_envio.grid(row=0, column=0, padx=(0, 6), sticky="ew")
-        customtkinter.CTkButton(origen_entry_frame, text="📍 Maps", width=65, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=lambda: self._open_gmaps("origen")).grid(row=0, column=1)
-
-        # Destino
-        customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección DESTINO", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=4, column=0, padx=12, pady=(4, 2), sticky="w")
+        # Destino / Envío
+        customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección de ENVÍO", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(4, 2), sticky="w")
         destino_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
-        destino_entry_frame.grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
+        destino_entry_frame.grid(row=3, column=0, padx=12, pady=(0, 10), sticky="ew")
         destino_entry_frame.grid_columnconfigure(0, weight=1)
         self.destino_entry_envio = customtkinter.CTkEntry(destino_entry_frame, textvariable=self.envio_destino_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
         self.destino_entry_envio.grid(row=0, column=0, padx=(0, 6), sticky="ew")
@@ -2148,7 +2117,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     "",
                     self.cached_logo_pil
                 )
-            elif tab_activa == "Etiqueta 2x4":
+            elif tab_activa == "Gestión de Destinatario":
                 pil_image = _generar_etiqueta_2x4_pil_image(
                     self.envio_destinatario_var.get(),
                     self.envio_origen_var.get(),
@@ -2176,7 +2145,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         tab_activa = self.tabview.get()
         if tab_activa == "Código de Barras":
             self._procesar_generacion_barcode(imprimir_despues=True)
-        elif tab_activa == "Etiqueta 2x4":
+        elif tab_activa == "Gestión de Destinatario":
             self._procesar_generacion_2x4(imprimir_despues=True)
         else:
             self._procesar_generacion_qr(imprimir_despues=True)
