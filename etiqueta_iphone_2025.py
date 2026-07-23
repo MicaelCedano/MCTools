@@ -121,7 +121,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.4.4"
+VERSION = "3.4.5"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2711,7 +2711,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             os._exit(0)
 
     def ejecutar_instalacion_inmediata(self):
-        """Ejecuta la sustitución del ejecutable e inicia la nueva versión."""
+        """Ejecuta la sustitución del ejecutable utilizando el actualizador independiente (updater.exe)."""
         if not hasattr(self, 'downloaded_new_exe') or not self.downloaded_new_exe or not os.path.exists(self.downloaded_new_exe):
             messagebox.showerror("Error", "No se encontró el archivo de actualización listo para instalar.")
             return
@@ -2720,9 +2720,74 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             current_exe = sys.executable
             temp_dir = tempfile.gettempdir()
             new_exe = self.downloaded_new_exe
+            current_pid = os.getpid()
+            
+            updater_exe_name = "updater.exe"
+            updater_found = None
+            
+            # 1. Buscar updater.exe en bundle PyInstaller o directorio de instalación
+            if getattr(sys, 'frozen', False):
+                base_dir = getattr(sys, '_MEIPASS', os.path.dirname(current_exe))
+                candidates = [
+                    os.path.join(base_dir, updater_exe_name),
+                    os.path.join(os.path.dirname(current_exe), updater_exe_name),
+                    os.path.join(os.getcwd(), updater_exe_name)
+                ]
+                for cand in candidates:
+                    if os.path.exists(cand):
+                        updater_found = cand
+                        break
+            else:
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                cand_exe = os.path.join(script_dir, updater_exe_name)
+                if os.path.exists(cand_exe):
+                    updater_found = cand_exe
+
+            if updater_found:
+                # Copiar updater.exe a temp_dir para evitar bloqueos en el directorio original
+                temp_updater = os.path.join(temp_dir, "mctools_updater.exe")
+                try:
+                    import shutil
+                    shutil.copy2(updater_found, temp_updater)
+                    updater_cmd_path = temp_updater
+                except Exception:
+                    updater_cmd_path = updater_found
+
+                cmd = [
+                    updater_cmd_path,
+                    "--target", current_exe,
+                    "--source", new_exe,
+                    "--pid", str(current_pid)
+                ]
+                subprocess.Popen(cmd)
+            else:
+                # Si estamos en modo desarrollo o updater.exe no está compilado, intentar ejecutar updater.py
+                script_dir = os.path.dirname(os.path.abspath(__file__)) if not getattr(sys, 'frozen', False) else os.path.dirname(current_exe)
+                updater_py = os.path.join(script_dir, "updater.py")
+                if os.path.exists(updater_py):
+                    cmd = [
+                        sys.executable,
+                        updater_py,
+                        "--target", current_exe if getattr(sys, 'frozen', False) else new_exe,
+                        "--source", new_exe,
+                        "--pid", str(current_pid)
+                    ]
+                    subprocess.Popen(cmd)
+                else:
+                    # Respaldo de emergencia mediante script batch
+                    self._ejecutar_instalacion_bat_fallback(current_exe, new_exe, temp_dir)
+                    return
+
+            time.sleep(0.3)
+            os._exit(0)
+        except Exception as e:
+            messagebox.showerror("Error de Instalación", f"No se pudo iniciar el actualizador (updater.exe):\n{e}")
+
+    def _ejecutar_instalacion_bat_fallback(self, current_exe, new_exe, temp_dir):
+        """Respaldo secundario mediante batch script en caso extremo de no contar con updater.exe."""
+        try:
             bat_path = os.path.join(temp_dir, "mctools_updater.bat")
             vbs_path = os.path.join(temp_dir, "mctools_launcher.vbs")
-            
             exe_basename = os.path.basename(current_exe)
             bat_lines = [
                 "@echo off",
@@ -2740,14 +2805,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 f'if exist "{new_exe}" del /F /Q "{new_exe}" >nul 2>&1',
                 '(goto) 2>nul & del "%~f0" >nul 2>&1'
             ]
-            
             with open(bat_path, 'w', encoding='cp1252') as f:
                 f.write("\r\n".join(bat_lines))
-                
             vbs_code = f'CreateObject("WScript.Shell").Run Chr(34) & "{bat_path}" & Chr(34), 0, False'
             with open(vbs_path, 'w', encoding='cp1252') as f:
                 f.write(vbs_code)
-                
             subprocess.Popen(['wscript.exe', vbs_path])
             time.sleep(0.3)
             os._exit(0)

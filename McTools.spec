@@ -5,6 +5,10 @@ import sys
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
 
 datas = [('logo.ico', '.'), ('logo.png', '.')]
+if os.path.exists(os.path.join('dist', 'updater.exe')):
+    datas.append((os.path.join('dist', 'updater.exe'), '.'))
+elif os.path.exists('updater.exe'):
+    datas.append(('updater.exe', '.'))
 binaries = []
 
 # Incluir explícitamente las DLLs del runtime de Python (python311.dll, vcruntime140.dll)
