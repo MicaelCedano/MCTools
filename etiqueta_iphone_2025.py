@@ -126,13 +126,13 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.2"
+VERSION = "3.5.3"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
 LABEL_WIDTH_INCHES = 4
 LABEL_HEIGHT_INCHES = 3
-PREVIEW_MAX_WIDTH = 380
+PREVIEW_MAX_WIDTH = 440
 PREVIEW_MAX_HEIGHT = int(PREVIEW_MAX_WIDTH * (LABEL_HEIGHT_INCHES / LABEL_WIDTH_INCHES))
 
 # --- Rutas de Fuentes (Asegúrate de que estos archivos .ttf estén en la misma carpeta o en Windows/Fonts) ---
@@ -907,7 +907,7 @@ def _generar_etiqueta_2x4_pil_image(destinatario, origen, destino):
     draw.text(((LABEL_WIDTH_PX - titulo_w) // 2, y_actual), titulo_text, fill="black", font=font_titulo)
     
     destinatario_upper = destinatario.strip().upper() if destinatario.strip() else "NOMBRE DESTINATARIO"
-    max_w = LABEL_WIDTH_PX - int(0.4 * DPI)
+    max_w = LABEL_WIDTH_PX - int(0.8 * DPI)
     
     font_size_pt = 30
     min_size_pt = 10
@@ -921,8 +921,8 @@ def _generar_etiqueta_2x4_pil_image(destinatario, origen, destino):
     draw.text(((LABEL_WIDTH_PX - dest_w) // 2, y_actual), destinatario_upper, fill="black", font=font_dest)
     
     # QR grande en el centro para el envío
-    qr_size_px = int(1.65 * DPI) # ~495px (QR grande centrado)
-    y_qr = y_actual + int(0.40 * DPI)
+    qr_size_px = int(1.55 * DPI) # ~465px (QR grande centrado)
+    y_qr = y_actual + int(0.38 * DPI)
     x_qr = (LABEL_WIDTH_PX - qr_size_px) // 2
     
     ubicacion_qr = destino.strip() if destino.strip() else origen.strip()
@@ -1465,8 +1465,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.iconphoto(True, self._app_icon_photo)
             except Exception:
                 pass
-        self.geometry("920x720")  # Aumentado para acomodar el cuadro de texto
-        self.minsize(920, 720)
+        self.geometry("1060x720")  # Aumentado a 1060px para que la preview no se corte
+        self.minsize(1000, 700)
         self.configure(fg_color="#0F172A")  # Slate-900 Main Window
         
         limpiar_archivos_antiguos()
@@ -1478,7 +1478,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.grid_rowconfigure(0, weight=1)
 
         # Crear Frames
-        self.controls_frame = customtkinter.CTkFrame(self, width=340, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
+        self.controls_frame = customtkinter.CTkFrame(self, width=380, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
         self.controls_frame.grid(row=0, column=0, sticky="nsw")
         self.controls_frame.grid_rowconfigure(2, weight=1)  # Expand tabview area
 
