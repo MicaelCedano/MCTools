@@ -4,7 +4,7 @@ import customtkinter
 import sys
 from PyInstaller.utils.hooks import collect_all, collect_dynamic_libs
 
-datas = [('logo.ico', '.'), ('logo.png', '.')]
+datas = [('logo.ico', '.'), ('logo.png', '.'), ('destinatarios_etiquetas.json', '.')]
 if os.path.exists(os.path.join('dist', 'updater.exe')):
     datas.append((os.path.join('dist', 'updater.exe'), '.'))
 elif os.path.exists('updater.exe'):

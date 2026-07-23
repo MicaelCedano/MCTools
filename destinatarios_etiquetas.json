@@ -1,0 +1,67 @@
+{
+    "carlos castillo gbtech": {
+        "nombre_destinatario": "carlos castillo gbtech",
+        "origen": "yacelltech",
+        "destino": "gbtech"
+    },
+    "LUIS GALAN (CAPITAL MOVIL)": {
+        "nombre_destinatario": "LUIS GALAN (CAPITAL MOVIL)",
+        "origen": "yacelltech",
+        "destino": "capital movil"
+    },
+    "issa señal digital higuey": {
+        "nombre_destinatario": "issa señal digital higuey",
+        "origen": "yacelltech",
+        "destino": "https://maps.app.goo.gl/nNKftJPDz7x4tsSx7"
+    },
+    "issa señal digital 3": {
+        "nombre_destinatario": "issa señal digital 3",
+        "origen": "yacelltech",
+        "destino": "issa señal digital"
+    },
+    "issa señal digital friusa": {
+        "nombre_destinatario": "issa señal digital friusa",
+        "origen": "yacelltech",
+        "destino": "El antojo friusa"
+    },
+    "yacelltech veron": {
+        "nombre_destinatario": "yacelltech veron",
+        "origen": "yacelltech",
+        "destino": "yacelltech bavaro"
+    },
+    "angelo": {
+        "nombre_destinatario": "angelo btss",
+        "origen": "yacelltech",
+        "destino": "plaza central santo domingo"
+    },
+    "leo libatech": {
+        "nombre_destinatario": "leo cabrera (libatech)",
+        "origen": "yacelltech",
+        "destino": "18°30'55.9\"N 69°51'13.1\"W"
+    },
+    "leo villas": {
+        "nombre_destinatario": "smart phone world srl (leo villas)",
+        "origen": "yacelltech",
+        "destino": "19°24'58.4\"N 70°38'32.3\"W"
+    },
+    "Trusthy": {
+        "nombre_destinatario": "Trusthy Tech SRl (Yan Carlos Santana)",
+        "origen": "C. Gaviota 266 santo domingo",
+        "destino": "Trusthy Tech Principal"
+    },
+    "SMARTWORLD SRL": {
+        "nombre_destinatario": "LEONARDO VILLAS (SMARTWORLD SRL)",
+        "origen": "yacelltech",
+        "destino": "19°24'58.4\"N 70°38'32.3\"W"
+    },
+    "hdmobile": {
+        "nombre_destinatario": "HdMobile",
+        "origen": "yacelltech",
+        "destino": "hd mobile Juan Sánchez Ramírez 19, Miches 24000"
+    },
+    "samir": {
+        "nombre_destinatario": "Samir",
+        "origen": "yacelltech",
+        "destino": "issa señal digital"
+    }
+}

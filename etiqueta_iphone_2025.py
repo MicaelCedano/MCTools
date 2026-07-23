@@ -32,6 +32,7 @@ import tempfile
 import atexit
 import json
 import urllib.request
+import urllib.parse
 import re
 import threading
 import sys
@@ -865,6 +866,173 @@ def _generar_etiqueta_qr_pdf_temporal(modelo, imeis, path_logo_pil):
     c.save()
     return temp_pdf_path
 
+# --- FUNCIONES ETIQUETA 2X4 / ENVÍO ---
+def _generar_google_maps_link(ubicacion_str):
+    if not ubicacion_str or not ubicacion_str.strip():
+        return None
+    query_encoded = urllib.parse.quote_plus(ubicacion_str.strip())
+    return f"https://www.google.com/maps/search/?api=1&query={query_encoded}"
+
+def _generar_qr_gmaps_temp(ubicacion_str):
+    if not ubicacion_str or not ubicacion_str.strip():
+        return None
+    gmaps_link = _generar_google_maps_link(ubicacion_str)
+    if not gmaps_link:
+        return None
+    try:
+        qr = qrcode.QRCode(version=1, box_size=3, border=1, error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr.add_data(gmaps_link)
+        img = qr.make_image(fill_color="black", back_color="white")
+        fd, temp_path = tempfile.mkstemp(suffix=".png", prefix="qr_gmaps_")
+        os.close(fd)
+        with open(temp_path, 'wb') as f:
+            img.save(f)
+        return temp_path
+    except Exception as e:
+        print(f"Error guardando QR temp: {e}")
+        return None
+
+def _generar_etiqueta_2x4_pil_image(destinatario, origen, destino):
+    DPI = 300
+    LABEL_WIDTH_PX = int(4.0 * DPI)  # 1200 px
+    LABEL_HEIGHT_PX = int(3.0 * DPI) # 900 px
+    
+    image = Image.new("RGB", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), "white")
+    draw = ImageDraw.Draw(image)
+    
+    font_titulo = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(14 * DPI / 72))
+    titulo_text = "DESTINATARIO:"
+    titulo_w = draw.textlength(titulo_text, font=font_titulo)
+    y_actual = int(0.55 * DPI)
+    draw.text(((LABEL_WIDTH_PX - titulo_w) // 2, y_actual), titulo_text, fill="black", font=font_titulo)
+    
+    destinatario_upper = destinatario.strip().upper() if destinatario.strip() else "NOMBRE DESTINATARIO"
+    max_w = LABEL_WIDTH_PX - int(0.4 * DPI)
+    
+    font_size_pt = 30
+    min_size_pt = 10
+    font_dest = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(font_size_pt * DPI / 72))
+    while font_size_pt > min_size_pt and draw.textlength(destinatario_upper, font=font_dest) > max_w:
+        font_size_pt -= 1
+        font_dest = obtener_fuente_pil(FONT_BOLD_PATH_TTF, int(font_size_pt * DPI / 72))
+        
+    dest_w = draw.textlength(destinatario_upper, font=font_dest)
+    y_actual += int(0.3 * DPI)
+    draw.text(((LABEL_WIDTH_PX - dest_w) // 2, y_actual), destinatario_upper, fill="black", font=font_dest)
+    
+    qr_size_px = int(1.1 * DPI) # ~330px
+    y_qr = LABEL_HEIGHT_PX - qr_size_px - int(0.55 * DPI)
+    font_help = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(8 * DPI / 72))
+    
+    if origen.strip():
+        link_o = _generar_google_maps_link(origen)
+        qr_img_o = _crear_qr_pil(link_o, qr_size_px)
+        if qr_img_o:
+            x_o = int(0.4 * DPI)
+            image.paste(qr_img_o, (x_o, y_qr))
+            help_txt_o = "Escanear para ver origen"
+            help_w_o = draw.textlength(help_txt_o, font=font_help)
+            draw.text((x_o + (qr_size_px - help_w_o) // 2, y_qr + qr_size_px + 8), help_txt_o, fill="black", font=font_help)
+            
+    if destino.strip():
+        link_d = _generar_google_maps_link(destino)
+        qr_img_d = _crear_qr_pil(link_d, qr_size_px)
+        if qr_img_d:
+            x_d = LABEL_WIDTH_PX - qr_size_px - int(0.4 * DPI)
+            image.paste(qr_img_d, (x_d, y_qr))
+            help_txt_d = "Escanear para ver destino"
+            help_w_d = draw.textlength(help_txt_d, font=font_help)
+            draw.text((x_d + (qr_size_px - help_w_d) // 2, y_qr + qr_size_px + 8), help_txt_d, fill="black", font=font_help)
+
+    return image
+
+def _crear_qr_pil(data, target_size_px):
+    if not data: return None
+    try:
+        qr = qrcode.QRCode(version=1, box_size=3, border=1, error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr.add_data(data)
+        img = qr.make_image(fill_color="black", back_color="white").convert("RGB")
+        return img.resize((target_size_px, target_size_px), Image.Resampling.LANCZOS)
+    except Exception as e:
+        print(f"Error generando QR PIL: {e}")
+        return None
+
+def _dibujar_etiqueta_2x4_canvas(c, nombre_destinatario_data, origen_data, destino_data):
+    if not PDF_SAVE_ENABLED: return
+    LABEL_WIDTH_PT = 4 * inch
+    LABEL_HEIGHT_PT = 3 * inch
+    ETIQUETA_MARGEN_GENERAL_PT = 15
+    ETIQUETA_MARGEN_SUPERIOR_TEXTO_PT = 50 
+    ETIQUETA_ESPACIO_NOMBRE_A_QR_SUPERIOR = 15
+    ETIQUETA_FONT_TITULO_SIZE = 14
+    ETIQUETA_FONT_DESTINATARIO_MAX_SIZE = 30
+    ETIQUETA_FONT_DESTINATARIO_MIN_SIZE = 10
+    ETIQUETA_FONT_QR_HELP_SIZE = 7
+    ETIQUETA_FONT_PRINCIPAL_BOLD = "Times-Bold"
+    ETIQUETA_FONT_QR_HELPER = "Helvetica"
+    ETIQUETA_QR_SIZE_PT = 60
+    ETIQUETA_ESPACIO_QR_A_TEXTO_AYUDA = 3
+
+    y_actual = LABEL_HEIGHT_PT - ETIQUETA_MARGEN_SUPERIOR_TEXTO_PT
+    c.setFont(ETIQUETA_FONT_PRINCIPAL_BOLD, ETIQUETA_FONT_TITULO_SIZE)
+    c.drawCentredString(LABEL_WIDTH_PT / 2, y_actual, "DESTINATARIO:")
+    
+    y_actual -= (10 + ETIQUETA_FONT_TITULO_SIZE * 0.9)
+    nombre_destinatario_upper = nombre_destinatario_data.upper()
+    max_ancho_nombre = LABEL_WIDTH_PT - (2 * ETIQUETA_MARGEN_GENERAL_PT)
+    
+    tam_fuente = ETIQUETA_FONT_DESTINATARIO_MAX_SIZE
+    while tam_fuente >= ETIQUETA_FONT_DESTINATARIO_MIN_SIZE:
+        if c.stringWidth(nombre_destinatario_upper, ETIQUETA_FONT_PRINCIPAL_BOLD, tam_fuente) <= max_ancho_nombre:
+            break
+        tam_fuente -= 1
+        
+    c.setFont(ETIQUETA_FONT_PRINCIPAL_BOLD, tam_fuente)
+    y_actual -= (tam_fuente * 0.9)
+    c.drawCentredString(LABEL_WIDTH_PT / 2, y_actual, nombre_destinatario_upper)
+    
+    y_superior_qrs = y_actual - (tam_fuente * 0.3) - ETIQUETA_ESPACIO_NOMBRE_A_QR_SUPERIOR
+    y_base_qrs = y_superior_qrs - ETIQUETA_QR_SIZE_PT
+    y_texto_ayuda = y_base_qrs - ETIQUETA_ESPACIO_QR_A_TEXTO_AYUDA
+    
+    qr_origen_x = ETIQUETA_MARGEN_GENERAL_PT
+    qr_destino_x = LABEL_WIDTH_PT - ETIQUETA_MARGEN_GENERAL_PT - ETIQUETA_QR_SIZE_PT
+
+    if origen_data.strip():
+        qr_o_path = _generar_qr_gmaps_temp(origen_data)
+        if qr_o_path and os.path.exists(qr_o_path):
+            c.drawImage(ReportLabImageReader(qr_o_path), qr_origen_x, y_base_qrs, width=ETIQUETA_QR_SIZE_PT, height=ETIQUETA_QR_SIZE_PT, mask='auto')
+            c.setFont(ETIQUETA_FONT_QR_HELPER, ETIQUETA_FONT_QR_HELP_SIZE)
+            c.drawCentredString(qr_origen_x + ETIQUETA_QR_SIZE_PT / 2, y_texto_ayuda, "Escanear para ver origen")
+            try: os.remove(qr_o_path)
+            except: pass
+
+    if destino_data.strip():
+        qr_d_path = _generar_qr_gmaps_temp(destino_data)
+        if qr_d_path and os.path.exists(qr_d_path):
+            c.drawImage(ReportLabImageReader(qr_d_path), qr_destino_x, y_base_qrs, width=ETIQUETA_QR_SIZE_PT, height=ETIQUETA_QR_SIZE_PT, mask='auto')
+            c.setFont(ETIQUETA_FONT_QR_HELPER, ETIQUETA_FONT_QR_HELP_SIZE)
+            c.drawCentredString(qr_destino_x + ETIQUETA_QR_SIZE_PT / 2, y_texto_ayuda, "Escanear para ver destino")
+            try: os.remove(qr_d_path)
+            except: pass
+
+def _generar_etiqueta_2x4_pdf_temporal(destinatario, origen, destino, cantidad=1):
+    if not PDF_SAVE_ENABLED: return None
+    fd, pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_2x4_")
+    os.close(fd)
+    if pdf_path not in temporary_files_to_delete:
+        temporary_files_to_delete.append(pdf_path)
+        
+    LABEL_WIDTH_PT = 4 * inch
+    LABEL_HEIGHT_PT = 3 * inch
+    
+    c = reportlab_canvas.Canvas(pdf_path, pagesize=(LABEL_WIDTH_PT, LABEL_HEIGHT_PT))
+    for _ in range(cantidad):
+        _dibujar_etiqueta_2x4_canvas(c, destinatario, origen, destino)
+        c.showPage()
+    c.save()
+    return pdf_path
+
 # --- FUNCIÓN DE LECTURA E IMPORTACIÓN DE ARCHIVOS (EXCEL / CSV / TXT) ---
 def extraer_imeis_y_modelo_de_archivo(filepath):
     """
@@ -1360,6 +1528,13 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Variables específicas de Pestaña Barcode
         self.imei_var = tk.StringVar()
 
+        # Variables para Pestaña Etiqueta 2x4 (Envío) y Gestión de Destinatarios
+        self.destinatarios_guardados = {}
+        self.envio_destinatario_var = tk.StringVar()
+        self.envio_origen_var = tk.StringVar()
+        self.envio_destino_var = tk.StringVar()
+        self._load_destinatarios()
+
         # 1. Banner de Encabezado (Logo & Versión)
         header_frame = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
         header_frame.grid(row=0, column=0, padx=20, pady=(20, 5), sticky="ew")
@@ -1438,11 +1613,13 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
         self.tab_procesador = self.tabview.add("Procesador")
+        self.tab_envio = self.tabview.add("Etiqueta 2x4")
         
         # Configure columns inside tabs
         self.tab_barcode.grid_columnconfigure(0, weight=1)
         self.tab_qr.grid_columnconfigure(0, weight=1)
         self.tab_procesador.grid_columnconfigure(0, weight=1)
+        self.tab_envio.grid_columnconfigure(0, weight=1)
 
         # ---------------- PESTAÑA CÓDIGO DE BARRAS ----------------
         inputs_barcode = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -1807,24 +1984,123 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         proc_actions = customtkinter.CTkFrame(self.procesador_output_frame, fg_color="transparent")
         proc_actions.grid(row=2, column=0, padx=15, pady=(5, 15), sticky="ew")
-        proc_actions.grid_columnconfigure((0, 1, 2), weight=1)
+        proc_actions.grid_columnconfigure(0, weight=1)
         
         self.proc_copy_btn = customtkinter.CTkButton(proc_actions, text="Copiar al Portapapeles", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_copiar_portapapeles, state="disabled")
-        self.proc_copy_btn.grid(row=0, column=0, padx=(0, 4), sticky="ew")
-        
-        self.proc_save_btn = customtkinter.CTkButton(proc_actions, text="Guardar como TXT", fg_color="#6366F1", hover_color="#4F46E5", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_guardar_txt, state="disabled")
-        self.proc_save_btn.grid(row=0, column=1, padx=2, sticky="ew")
-
-        self.proc_export_excel_btn = customtkinter.CTkButton(proc_actions, text="Exportar a Excel/CSV", fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.proc_exportar_excel_csv, state="disabled")
-        self.proc_export_excel_btn.grid(row=0, column=2, padx=(4, 0), sticky="ew")
+        self.proc_copy_btn.grid(row=0, column=0, padx=0, sticky="ew")
         
         # Grid inicial para el procesador (oculto)
         self.procesador_output_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         self.procesador_output_frame.grid_remove()
 
+        # ---------------- PESTAÑA ETIQUETA 2X4 (ENVÍO) ----------------
+        inputs_envio = customtkinter.CTkFrame(self.tab_envio, fg_color="transparent")
+        inputs_envio.grid(row=0, column=0, sticky="ew")
+        inputs_envio.grid_columnconfigure(0, weight=1)
+
+        # 1. Tarjeta Gestión de Destinatarios
+        dest_card = customtkinter.CTkFrame(inputs_envio, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        dest_card.grid(row=0, column=0, padx=5, pady=(5, 12), sticky="ew")
+        dest_card.grid_columnconfigure(0, weight=1)
+        
+        dest_header = customtkinter.CTkFrame(dest_card, fg_color="transparent")
+        dest_header.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        dest_header.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(dest_header, text="Gestión de Destinatarios", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        
+        dest_combo_frame = customtkinter.CTkFrame(dest_card, fg_color="transparent")
+        dest_combo_frame.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="ew")
+        dest_combo_frame.grid_columnconfigure(0, weight=1)
+        
+        nombres_dest = sorted(list(self.destinatarios_guardados.keys()))
+        self.combobox_destinatarios = customtkinter.CTkComboBox(
+            dest_combo_frame,
+            values=nombres_dest,
+            state="readonly",
+            command=self._on_destinatario_selected,
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8
+        )
+        self.combobox_destinatarios.grid(row=0, column=0, sticky="ew")
+        if not nombres_dest:
+            self.combobox_destinatarios.set("")
+
+        dest_buttons_frame = customtkinter.CTkFrame(dest_card, fg_color="transparent")
+        dest_buttons_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
+        dest_buttons_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkButton(
+            dest_buttons_frame,
+            text="Guardar Actual",
+            height=28,
+            fg_color="#06B6D4",
+            hover_color="#0891B2",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            command=self.guardar_destinatario_actual
+        ).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+
+        customtkinter.CTkButton(
+            dest_buttons_frame,
+            text="Eliminar",
+            height=28,
+            fg_color="#EF4444",
+            hover_color="#DC2626",
+            text_color="#FFFFFF",
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            command=self.eliminar_destinatario_seleccionado
+        ).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        # 2. Tarjeta Datos de Envío
+        datos_card = customtkinter.CTkFrame(inputs_envio, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        datos_card.grid(row=1, column=0, padx=5, pady=(0, 15), sticky="ew")
+        datos_card.grid_columnconfigure(0, weight=1)
+
+        # Destinatario
+        customtkinter.CTkLabel(datos_card, text="Nombre del DESTINATARIO", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        dest_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
+        dest_entry_frame.grid(row=1, column=0, padx=12, pady=(0, 8), sticky="ew")
+        dest_entry_frame.grid_columnconfigure(0, weight=1)
+        self.destinatario_entry_envio = customtkinter.CTkEntry(dest_entry_frame, textvariable=self.envio_destinatario_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.destinatario_entry_envio.grid(row=0, column=0, sticky="ew")
+
+        # Origen
+        customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección ORIGEN", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(4, 2), sticky="w")
+        origen_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
+        origen_entry_frame.grid(row=3, column=0, padx=12, pady=(0, 8), sticky="ew")
+        origen_entry_frame.grid_columnconfigure(0, weight=1)
+        self.origen_entry_envio = customtkinter.CTkEntry(origen_entry_frame, textvariable=self.envio_origen_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.origen_entry_envio.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        customtkinter.CTkButton(origen_entry_frame, text="📍 Maps", width=65, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=lambda: self._open_gmaps("origen")).grid(row=0, column=1)
+
+        # Destino
+        customtkinter.CTkLabel(datos_card, text="Ciudad/Dirección DESTINO", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=4, column=0, padx=12, pady=(4, 2), sticky="w")
+        destino_entry_frame = customtkinter.CTkFrame(datos_card, fg_color="transparent")
+        destino_entry_frame.grid(row=5, column=0, padx=12, pady=(0, 10), sticky="ew")
+        destino_entry_frame.grid_columnconfigure(0, weight=1)
+        self.destino_entry_envio = customtkinter.CTkEntry(destino_entry_frame, textvariable=self.envio_destino_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
+        self.destino_entry_envio.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+        customtkinter.CTkButton(destino_entry_frame, text="📍 Maps", width=65, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=lambda: self._open_gmaps("destino")).grid(row=0, column=1)
+
+        # Acciones Etiqueta 2x4
+        actions_envio = customtkinter.CTkFrame(self.tab_envio, fg_color="transparent")
+        actions_envio.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_envio.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkButton(actions_envio, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
-        for var in [self.modelo_var, self.imei_var]:
+        for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var]:
             var.trace_add("write", self.schedule_preview_update)
             
         # Evento específico para recargar logo si cambia la ruta
@@ -1872,6 +2148,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     "",
                     self.cached_logo_pil
                 )
+            elif tab_activa == "Etiqueta 2x4":
+                pil_image = _generar_etiqueta_2x4_pil_image(
+                    self.envio_destinatario_var.get(),
+                    self.envio_origen_var.get(),
+                    self.envio_destino_var.get()
+                )
             else:  # Código QR
                 imeis = self.obtener_imeis_del_texto()
                 self.actualizar_contador_imeis()
@@ -1894,6 +2176,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         tab_activa = self.tabview.get()
         if tab_activa == "Código de Barras":
             self._procesar_generacion_barcode(imprimir_despues=True)
+        elif tab_activa == "Etiqueta 2x4":
+            self._procesar_generacion_2x4(imprimir_despues=True)
         else:
             self._procesar_generacion_qr(imprimir_despues=True)
 
@@ -1942,6 +2226,126 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
             return
         self._finalizar_generacion(temp_pdf_path, modelo, "qr", guardar_permanente, imprimir_despues)
+
+    def _load_destinatarios(self):
+        DESTINATARIOS_FILE = "destinatarios_etiquetas.json"
+        target_path = DESTINATARIOS_FILE if os.path.exists(DESTINATARIOS_FILE) else obtener_ruta_recurso(DESTINATARIOS_FILE)
+        if os.path.exists(target_path):
+            try:
+                with open(target_path, 'r', encoding='utf-8') as f:
+                    self.destinatarios_guardados = json.load(f)
+            except Exception as e:
+                print(f"Error al leer {target_path}: {e}")
+                self.destinatarios_guardados = {}
+        else:
+            self.destinatarios_guardados = {}
+
+    def _save_destinatarios(self):
+        DESTINATARIOS_FILE = "destinatarios_etiquetas.json"
+        try:
+            with open(DESTINATARIOS_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.destinatarios_guardados, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            messagebox.showerror("Error al Guardar", f"No se pudo guardar la lista de destinatarios:\n{e}", parent=self)
+
+    def _update_destinatarios_combobox(self):
+        nombres = sorted(list(self.destinatarios_guardados.keys()))
+        if hasattr(self, 'combobox_destinatarios'):
+            self.combobox_destinatarios.configure(values=nombres)
+            if not nombres:
+                self.combobox_destinatarios.set("")
+
+    def _on_destinatario_selected(self, nombre_seleccionado: str):
+        if nombre_seleccionado in self.destinatarios_guardados:
+            datos = self.destinatarios_guardados[nombre_seleccionado]
+            self.envio_destinatario_var.set(datos.get("nombre_destinatario", nombre_seleccionado))
+            self.envio_origen_var.set(datos.get("origen", ""))
+            self.envio_destino_var.set(datos.get("destino", ""))
+            self.schedule_preview_update()
+
+    def guardar_destinatario_actual(self):
+        nombre_destinatario = self.envio_destinatario_var.get().strip()
+        if not nombre_destinatario:
+            messagebox.showwarning("Campo Vacío", "El campo 'Nombre del DESTINATARIO' no puede estar vacío.", parent=self)
+            return
+
+        dialog = customtkinter.CTkInputDialog(
+            text="Ingresa un nombre clave para este destinatario:",
+            title="Guardar Destinatario",
+            fg_color="#0F172A",
+            button_fg_color="#06B6D4",
+            button_hover_color="#0891B2",
+            entry_fg_color="#1E293B",
+            entry_text_color="#F8FAFC",
+        )
+        nombre_clave = dialog.get_input()
+
+        if not nombre_clave or not nombre_clave.strip():
+            return
+        
+        nombre_clave = nombre_clave.strip()
+
+        if nombre_clave in self.destinatarios_guardados:
+            if not messagebox.askyesno("Sobrescribir", f"El destinatario '{nombre_clave}' ya existe.\n¿Deseas sobrescribir?", parent=self):
+                return
+
+        self.destinatarios_guardados[nombre_clave] = {
+            "nombre_destinatario": nombre_destinatario,
+            "origen": self.envio_origen_var.get().strip(),
+            "destino": self.envio_destino_var.get().strip()
+        }
+        self._save_destinatarios()
+        self._update_destinatarios_combobox()
+        self.combobox_destinatarios.set(nombre_clave)
+
+    def eliminar_destinatario_seleccionado(self):
+        nombre_clave = self.combobox_destinatarios.get()
+        if not nombre_clave:
+            messagebox.showwarning("Nada seleccionado", "Selecciona un destinatario de la lista para eliminar.", parent=self)
+            return
+
+        if nombre_clave in self.destinatarios_guardados:
+            if messagebox.askyesno("Confirmar", f"¿Seguro que quieres eliminar a '{nombre_clave}'?", parent=self):
+                del self.destinatarios_guardados[nombre_clave]
+                self._save_destinatarios()
+                self._update_destinatarios_combobox()
+                self.envio_destinatario_var.set("")
+                self.envio_origen_var.set("")
+                self.envio_destino_var.set("")
+                self.combobox_destinatarios.set("")
+                self.schedule_preview_update()
+
+    def _open_gmaps(self, tipo_ubicacion: str):
+        ubicacion_str = (self.envio_origen_var.get() if tipo_ubicacion == "origen" else self.envio_destino_var.get()).strip()
+        if not ubicacion_str:
+            messagebox.showwarning("Entrada Vacía", f"El campo de {tipo_ubicacion} está vacío.", parent=self)
+            return
+        gmaps_link = _generar_google_maps_link(ubicacion_str)
+        if gmaps_link:
+            try:
+                webbrowser.open(gmaps_link)
+            except Exception as e:
+                messagebox.showerror("Error al Abrir Enlace", f"No se pudo abrir el enlace:\n{e}", parent=self)
+
+    def _procesar_generacion_2x4(self, guardar_permanente=False, imprimir_despues=False):
+        if not PDF_SAVE_ENABLED:
+            messagebox.showerror("Función Deshabilitada", "La librería 'ReportLab' es necesaria para esta función.")
+            return
+        destinatario = self.envio_destinatario_var.get().strip()
+        origen = self.envio_origen_var.get().strip()
+        destino = self.envio_destino_var.get().strip()
+        if not destinatario:
+            messagebox.showerror("Campo Obligatorio", "El campo 'Nombre del DESTINATARIO' es obligatorio.")
+            return
+
+        cantidad = 1
+        temp_pdf_path = _generar_etiqueta_2x4_pdf_temporal(
+            destinatario, origen, destino, cantidad
+        )
+        if not temp_pdf_path or not os.path.exists(temp_pdf_path):
+            messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
+            return
+        self._finalizar_generacion(temp_pdf_path, destinatario, "ENVIO_2X4", guardar_permanente, imprimir_despues)
 
     def aprender_modelo_actual(self):
         """Aprende y guarda en la configuración el modelo que el usuario está utilizando actualmente."""
@@ -2141,7 +2545,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.proc_output_textbox.configure(state="disabled")
             self.proc_count_label.configure(text="0 IMEIs")
             self.proc_copy_btn.configure(state="disabled")
-            self.proc_save_btn.configure(state="disabled")
             return
 
         # Encontrar todos los IMEIs de 15 dígitos con expresión regular
@@ -2173,16 +2576,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.proc_output_textbox.insert("1.0", "\n".join(imeis_unicos))
             self.proc_count_label.configure(text=f"{len(imeis_unicos)} IMEIs")
             self.proc_copy_btn.configure(state="normal")
-            self.proc_save_btn.configure(state="normal")
-            self.proc_export_excel_btn.configure(state="normal")
             # Guardar en el historial
             self.proc_guardar_en_historial(texto_crudo, len(imeis_unicos), imeis_unicos)
         else:
             self.proc_output_textbox.insert("1.0", "No se encontraron IMEIs válidos.")
             self.proc_count_label.configure(text="0 IMEIs")
             self.proc_copy_btn.configure(state="disabled")
-            self.proc_save_btn.configure(state="disabled")
-            self.proc_export_excel_btn.configure(state="disabled")
 
         self.proc_output_textbox.configure(state="disabled")
 
@@ -2198,8 +2597,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         self.proc_count_label.configure(text="0 IMEIs")
         self.proc_copy_btn.configure(state="disabled")
-        self.proc_save_btn.configure(state="disabled")
-        self.proc_export_excel_btn.configure(state="disabled")
         self.proc_input_textbox.focus_set()
 
     def proc_guardar_en_historial(self, texto_crudo, count, imeis_unicos):
@@ -2410,7 +2807,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # pero podemos actualizar el estado de los botones si el usuario borra todo.
         if not texto_actual:
             self.proc_copy_btn.configure(state="disabled")
-            self.proc_save_btn.configure(state="disabled")
 
     def on_proc_click(self, event):
         """Limpia el placeholder si el usuario hace clic."""
