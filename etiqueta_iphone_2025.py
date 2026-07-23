@@ -112,12 +112,16 @@ def pil_to_tk_image_safe(pil_img, size=None):
 
 def obtener_ruta_recurso(rel_path):
     """Obtiene la ruta absoluta a un recurso, compatible con entorno dev y PyInstaller."""
-    if os.path.exists(rel_path):
-        return rel_path
     if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
         mei_path = os.path.join(sys._MEIPASS, rel_path)
         if os.path.exists(mei_path):
             return mei_path
+    if os.path.exists(rel_path):
+        return os.path.abspath(rel_path)
+    base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+    app_path = os.path.join(base_dir, rel_path)
+    if os.path.exists(app_path):
+        return app_path
     return rel_path
 
 # --- Constantes ---
@@ -1292,11 +1296,27 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self._preview_update_job = None
         self.cached_logo_pil = None
         
-        # Configuración Inicial
+        # Configuración Inicial y de Icono (Ventana y Barra de Tareas)
         self.title(f"McTools v{VERSION}")
-        if os.path.exists("logo.ico"):
+        icon_ico = obtener_ruta_recurso("logo.ico")
+        icon_png = obtener_ruta_recurso("logo.png")
+        if os.path.exists(icon_ico):
             try:
-                self.iconbitmap("logo.ico")
+                self.iconbitmap(icon_ico)
+            except Exception:
+                pass
+        if os.path.exists(icon_png):
+            try:
+                img = Image.open(icon_png)
+                self._app_icon_photo = ImageTk.PhotoImage(img)
+                self.iconphoto(True, self._app_icon_photo)
+            except Exception:
+                pass
+        elif os.path.exists(icon_ico):
+            try:
+                img = Image.open(icon_ico)
+                self._app_icon_photo = ImageTk.PhotoImage(img)
+                self.iconphoto(True, self._app_icon_photo)
             except Exception:
                 pass
         self.geometry("920x720")  # Aumentado para acomodar el cuadro de texto

@@ -58,12 +58,22 @@ class UpdaterApp:
 
         # Icono si existe en el directorio de trabajo o bundle
         icon_path = "logo.ico"
+        icon_png = "logo.png"
         if getattr(sys, 'frozen', False):
             base_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
             icon_path = os.path.join(base_dir, "logo.ico")
+            icon_png = os.path.join(base_dir, "logo.png")
         if os.path.exists(icon_path):
             try:
                 self.root.iconbitmap(icon_path)
+            except Exception:
+                pass
+        if os.path.exists(icon_png):
+            try:
+                from PIL import Image, ImageTk
+                img = Image.open(icon_png)
+                self._icon_photo = ImageTk.PhotoImage(img)
+                self.root.iconphoto(True, self._icon_photo)
             except Exception:
                 pass
 
