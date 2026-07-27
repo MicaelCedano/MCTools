@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.4"
+VERSION = "3.5.5"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -262,6 +262,381 @@ def guardar_nuevo_modelo(modelo_texto):
         _write_config(config)
         return True
     return False
+
+# --- Gestor de Plantillas (Base de Datos & Motores de Renderizado) ---
+def obtener_lista_plantillas():
+    """Obtiene la lista de plantillas personalizadas. Si no hay ninguna, crea unas por defecto."""
+    config = _read_config()
+    plantillas = config.get("custom_templates", [])
+    if not plantillas:
+        plantillas = [
+            {
+                "name": "iPhone Clásico (4x3)",
+                "width_inches": 4.0,
+                "height_inches": 3.0,
+                "elements": [
+                    {"type": "logo", "x": 2.0, "y": 0.25, "width": 1.6, "height": 0.6, "align": "center"},
+                    {"type": "text", "content": "Modelo: {modelo}", "x": 2.0, "y": 1.05, "font_size": 13, "font_style": "bold", "align": "center"},
+                    {"type": "text", "content": "IMEI: {imei}", "x": 2.0, "y": 1.35, "font_size": 12, "font_style": "bold", "align": "center"},
+                    {"type": "barcode", "value_source": "imei", "x": 2.0, "y": 1.65, "width": 3.0, "height": 0.6, "align": "center"}
+                ]
+            },
+            {
+                "name": "iPhone QR Múltiple (4x3)",
+                "width_inches": 4.0,
+                "height_inches": 3.0,
+                "elements": [
+                    {"type": "logo", "x": 2.0, "y": 0.25, "width": 1.6, "height": 0.6, "align": "center"},
+                    {"type": "text", "content": "Modelo: {modelo}", "x": 2.0, "y": 1.05, "font_size": 13, "font_style": "bold", "align": "center"},
+                    {"type": "qrcode", "value_source": "imeis", "x": 2.0, "y": 1.4, "width": 1.2, "height": 1.2, "align": "center"}
+                ]
+            }
+        ]
+        config["custom_templates"] = plantillas
+        _write_config(config)
+    return plantillas
+
+def guardar_plantilla(template):
+    """Guarda o actualiza una plantilla en la configuración."""
+    config = _read_config()
+    plantillas = config.get("custom_templates", [])
+    
+    reemplazada = False
+    for i, t in enumerate(plantillas):
+        if t.get("name") == template.get("name"):
+            plantillas[i] = template
+            reemplazada = True
+            break
+            
+    if not reemplazada:
+        plantillas.append(template)
+        
+    config["custom_templates"] = plantillas
+    _write_config(config)
+
+def eliminar_plantilla(template_name):
+    """Elimina una plantilla por su nombre."""
+    config = _read_config()
+    plantillas = config.get("custom_templates", [])
+    plantillas = [t for t in plantillas if t.get("name") != template_name]
+    config["custom_templates"] = plantillas
+    _write_config(config)
+
+def _generar_etiqueta_plantilla_pil_image(template, datos, logo_pil_image):
+    """Genera la etiqueta usando la plantilla provista como una imagen PIL."""
+    DPI = 300
+    width_inches = float(template.get("width_inches", 4.0))
+    height_inches = float(template.get("height_inches", 3.0))
+    
+    LABEL_WIDTH_PX = int(width_inches * DPI)
+    LABEL_HEIGHT_PX = int(height_inches * DPI)
+    
+    image = Image.new("RGB", (LABEL_WIDTH_PX, LABEL_HEIGHT_PX), "white")
+    draw = ImageDraw.Draw(image)
+    
+    for el in template.get("elements", []):
+        el_type = el.get("type", "text")
+        x_px = int(float(el.get("x", 0.0)) * DPI)
+        y_px = int(float(el.get("y", 0.0)) * DPI)
+        
+        if el_type == "logo" and logo_pil_image:
+            try:
+                logo_img = logo_pil_image.copy()
+                w_px = int(float(el.get("width", 1.5)) * DPI)
+                h_px = int(float(el.get("height", 0.6)) * DPI)
+                logo_img.thumbnail((w_px, h_px), Image.Resampling.LANCZOS)
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    logo_x = x_px - (logo_img.width // 2)
+                elif align == "right":
+                    logo_x = x_px - logo_img.width
+                else:
+                    logo_x = x_px
+                
+                if logo_x < 0: logo_x = 0
+                
+                if logo_img.mode in ('RGBA', 'LA') or (logo_img.mode == 'P' and 'transparency' in logo_img.info):
+                    image.paste(logo_img, (logo_x, y_px), logo_img)
+                else:
+                    image.paste(logo_img, (logo_x, y_px))
+            except Exception as e:
+                print(f"Error procesando logo en plantilla: {e}")
+                
+        elif el_type == "text":
+            content_template = el.get("content", "")
+            texto = content_template
+            for key, val in datos.items():
+                if isinstance(val, list):
+                    val_str = ", ".join([str(v) for v in val if str(v).strip()])
+                else:
+                    val_str = str(val)
+                texto = texto.replace(f"{{{key}}}", val_str)
+            
+            if not texto.strip():
+                continue
+                
+            font_size = int(el.get("font_size", 12))
+            font_style = el.get("font_style", "bold")
+            font_path = FONT_BOLD_PATH_TTF if font_style == "bold" else FONT_REGULAR_PATH_TTF
+            
+            font = obtener_fuente_pil(font_path, int(font_size * DPI / 72))
+            
+            text_w = draw.textlength(texto, font=font)
+            align = el.get("align", "center")
+            if align == "center":
+                text_x = x_px - (text_w // 2)
+            elif align == "right":
+                text_x = x_px - text_w
+            else:
+                text_x = x_px
+                
+            draw.text((text_x, y_px), texto, fill="black", font=font)
+            
+        elif el_type == "barcode":
+            val_source = el.get("value_source", "imei")
+            val = str(datos.get(val_source, "")).strip().upper()
+            if not val:
+                continue
+                
+            try:
+                w_px = int(float(el.get("width", 3.0)) * DPI)
+                h_px = int(float(el.get("height", 0.5)) * DPI)
+                
+                barcode_options = {
+                    'module_height': 15.0,
+                    'module_width': 0.3,
+                    'quiet_zone': 6.5,
+                    'write_text': False
+                }
+                code128 = barcode.get_barcode_class('code128')
+                writer = ImageWriter()
+                barcode_obj = code128(val, writer=writer)
+                barcode_pil = barcode_obj.render(barcode_options)
+                barcode_pil = barcode_pil.convert('RGB')
+                
+                barcode_pil = barcode_pil.resize((w_px, h_px), Image.Resampling.LANCZOS)
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    bc_x = x_px - (w_px // 2)
+                elif align == "right":
+                    bc_x = x_px - w_px
+                else:
+                    bc_x = x_px
+                    
+                image.paste(barcode_pil, (bc_x, y_px))
+            except Exception as e:
+                print(f"Error renderizando código de barras en plantilla: {e}")
+                
+        elif el_type == "qrcode":
+            val_source = el.get("value_source", "imei")
+            val_raw = datos.get(val_source, "")
+            if isinstance(val_raw, list):
+                val = "\n".join([str(v).strip() for v in val_raw if str(v).strip()])
+            else:
+                val = str(val_raw).strip()
+                
+            if not val:
+                continue
+                
+            try:
+                size_px = int(float(el.get("width", 1.2)) * DPI)
+                
+                qr = qrcode.QRCode(version=1, box_size=3, border=1, error_correction=qrcode.constants.ERROR_CORRECT_L)
+                qr.add_data(val)
+                qr.make(fit=True)
+                
+                qr_pil = qr.make_image(fill_color="black", back_color="white")
+                qr_pil = qr_pil.convert("RGB")
+                qr_pil = qr_pil.resize((size_px, size_px), Image.Resampling.LANCZOS)
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    qr_x = x_px - (size_px // 2)
+                elif align == "right":
+                    qr_x = x_px - size_px
+                else:
+                    qr_x = x_px
+                    
+                image.paste(qr_pil, (qr_x, y_px))
+            except Exception as e:
+                print(f"Error renderizando código QR en plantilla: {e}")
+                
+    return image
+
+def _generar_etiqueta_plantilla_pdf_temporal(template, datos, path_logo):
+    """Genera la etiqueta usando la plantilla provista como un PDF temporal."""
+    if not PDF_SAVE_ENABLED:
+        return None
+        
+    width_inches = float(template.get("width_inches", 4.0))
+    height_inches = float(template.get("height_inches", 3.0))
+    
+    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_plantilla_")
+    os.close(fd)
+    temporary_files_to_delete.append(temp_pdf_path)
+    
+    width_pt = width_inches * inch
+    height_pt = height_inches * inch
+    
+    c = reportlab_canvas.Canvas(temp_pdf_path, pagesize=(width_pt, height_pt))
+    
+    for el in template.get("elements", []):
+        el_type = el.get("type", "text")
+        
+        x_in = float(el.get("x", 0.0))
+        y_in = float(el.get("y", 0.0))
+        
+        pdf_x = x_in * inch
+        pdf_y = (height_inches - y_in) * inch
+        
+        if el_type == "logo" and path_logo and os.path.exists(path_logo):
+            try:
+                logo_pil = Image.open(path_logo)
+                w_in = float(el.get("width", 1.5))
+                h_in = float(el.get("height", 0.6))
+                
+                w_px, h_px = logo_pil.size
+                aspect = h_px / float(w_px) if w_px > 0 else 0
+                logo_w_pt = w_in * inch
+                logo_h_pt = logo_w_pt * aspect
+                if logo_h_pt > h_in * inch:
+                    logo_h_pt = h_in * inch
+                    logo_w_pt = logo_h_pt / aspect if aspect > 0 else 0
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    draw_x = pdf_x - (logo_w_pt / 2)
+                elif align == "right":
+                    draw_x = pdf_x - logo_w_pt
+                else:
+                    draw_x = pdf_x
+                
+                draw_y = pdf_y - logo_h_pt
+                
+                img_reader = ReportLabImageReader(logo_pil)
+                c.drawImage(img_reader, draw_x, draw_y, width=logo_w_pt, height=logo_h_pt, mask='auto')
+            except Exception as e:
+                print(f"Error al procesar logo en plantilla PDF: {e}")
+                
+        elif el_type == "text":
+            content_template = el.get("content", "")
+            texto = content_template
+            for key, val in datos.items():
+                if isinstance(val, list):
+                    val_str = ", ".join([str(v) for v in val if str(v).strip()])
+                else:
+                    val_str = str(val)
+                texto = texto.replace(f"{{{key}}}", val_str)
+                
+            if not texto.strip():
+                continue
+                
+            font_size = int(el.get("font_size", 12))
+            font_style = el.get("font_style", "bold")
+            font_name = RL_FONT_BOLD_NAME if font_style == "bold" else RL_FONT_REGULAR_NAME
+            
+            c.setFont(font_name, font_size)
+            align = el.get("align", "center")
+            
+            draw_y = pdf_y - font_size
+            
+            if align == "center":
+                c.drawCentredString(pdf_x, draw_y, texto)
+            elif align == "right":
+                c.drawRightString(pdf_x, draw_y, texto)
+            else:
+                c.drawString(pdf_x, draw_y, texto)
+                
+        elif el_type == "barcode":
+            val_source = el.get("value_source", "imei")
+            val = str(datos.get(val_source, "")).strip().upper()
+            if not val:
+                continue
+                
+            try:
+                w_in = float(el.get("width", 3.0))
+                h_in = float(el.get("height", 0.5))
+                
+                barcode_options = {
+                    'module_height': 15.0,
+                    'module_width': 0.3,
+                    'quiet_zone': 6.5,
+                    'write_text': False
+                }
+                code128 = barcode.get_barcode_class('code128')
+                writer = ImageWriter()
+                barcode_obj = code128(val, writer=writer)
+                barcode_pil_pdf = barcode_obj.render(barcode_options)
+                barcode_pil_pdf = barcode_pil_pdf.convert('RGB')
+                
+                barcode_io = io.BytesIO()
+                barcode_pil_pdf.save(barcode_io, format='PNG')
+                barcode_io.seek(0)
+                
+                img_reader = ReportLabImageReader(barcode_io)
+                
+                bc_w_pt = w_in * inch
+                bc_h_pt = h_in * inch
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    draw_x = pdf_x - (bc_w_pt / 2)
+                elif align == "right":
+                    draw_x = pdf_x - bc_w_pt
+                else:
+                    draw_x = pdf_x
+                    
+                draw_y = pdf_y - bc_h_pt
+                c.drawImage(img_reader, draw_x, draw_y, width=bc_w_pt, height=bc_h_pt, mask='auto')
+            except Exception as e:
+                print(f"Error generando código de barras en plantilla PDF: {e}")
+                
+        elif el_type == "qrcode":
+            val_source = el.get("value_source", "imei")
+            val_raw = datos.get(val_source, "")
+            if isinstance(val_raw, list):
+                val = "\n".join([str(v).strip() for v in val_raw if str(v).strip()])
+            else:
+                val = str(val_raw).strip()
+                
+            if not val:
+                continue
+                
+            try:
+                size_in = float(el.get("width", 1.2))
+                
+                qr = qrcode.QRCode(version=1, box_size=3, border=1, error_correction=qrcode.constants.ERROR_CORRECT_L)
+                qr.add_data(val)
+                qr.make(fit=True)
+                
+                qr_pil = qr.make_image(fill_color="black", back_color="white")
+                qr_pil = qr_pil.convert("RGB")
+                
+                qr_io = io.BytesIO()
+                qr_pil.save(qr_io, format='PNG')
+                qr_io.seek(0)
+                
+                img_reader = ReportLabImageReader(qr_io)
+                
+                qr_size_pt = size_in * inch
+                
+                align = el.get("align", "center")
+                if align == "center":
+                    draw_x = pdf_x - (qr_size_pt / 2)
+                elif align == "right":
+                    draw_x = pdf_x - qr_size_pt
+                else:
+                    draw_x = pdf_x
+                    
+                draw_y = pdf_y - qr_size_pt
+                c.drawImage(img_reader, draw_x, draw_y, width=qr_size_pt, height=qr_size_pt, mask='auto')
+            except Exception as e:
+                print(f"Error generando código QR en plantilla PDF: {e}")
+                
+    c.save()
+    return temp_pdf_path
 
 def cargar_config_inicial():
     """Carga la configuración de SumatraPDF al inicio."""
@@ -1505,6 +1880,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Variables específicas de Pestaña Barcode
         self.imei_var = tk.StringVar()
+        
+        # Variables de plantillas para los modos de impresión
+        self.plantilla_bc_var = tk.StringVar(value="Clásico (Por Defecto)")
+        self.plantilla_qr_var = tk.StringVar(value="Clásico (Por Defecto)")
 
         # Variables para Pestaña Etiqueta 2x4 (Envío) y Gestión de Destinatarios
         self.destinatarios_guardados = {}
@@ -1593,6 +1972,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
         self.tab_envio = self.tabview.add("Gestión de Destinatario")
+        self.tab_editor = self.tabview.add("Editor de Plantillas")
         self.tabview.set("Procesador")
         
         # Configure columns inside tabs
@@ -1600,6 +1980,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_qr.grid_columnconfigure(0, weight=1)
         self.tab_procesador.grid_columnconfigure(0, weight=1)
         self.tab_envio.grid_columnconfigure(0, weight=1)
+        self.tab_editor.grid_columnconfigure(0, weight=1)
 
         # ---------------- PESTAÑA CÓDIGO DE BARRAS ----------------
         inputs_barcode = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -1676,6 +2057,33 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.logo_entry_bc = customtkinter.CTkEntry(logo_entry_frame_bc, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
         self.logo_entry_bc.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         customtkinter.CTkButton(logo_entry_frame_bc, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
+
+        # Tarjeta Plantilla (Barcode)
+        plantilla_card_bc = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        plantilla_card_bc.grid(row=3, column=0, padx=5, pady=(0, 15), sticky="ew")
+        plantilla_card_bc.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(plantilla_card_bc, text="Diseño de Plantilla", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        
+        self.plantilla_combo_bc = customtkinter.CTkComboBox(
+            plantilla_card_bc,
+            variable=self.plantilla_bc_var,
+            values=["Clásico (Por Defecto)"] + [t["name"] for t in obtener_lista_plantillas()],
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8,
+            command=self.schedule_preview_update
+        )
+        self.plantilla_combo_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
 
         # Acciones Barcode
         actions_bc = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -1771,6 +2179,33 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.logo_entry_qr = customtkinter.CTkEntry(logo_entry_frame_qr, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
         self.logo_entry_qr.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         customtkinter.CTkButton(logo_entry_frame_qr, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
+
+        # Tarjeta Plantilla (QR)
+        plantilla_card_qr = customtkinter.CTkFrame(inputs_qr, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        plantilla_card_qr.grid(row=3, column=0, padx=5, pady=(0, 15), sticky="ew")
+        plantilla_card_qr.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(plantilla_card_qr, text="Diseño de Plantilla", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        
+        self.plantilla_combo_qr = customtkinter.CTkComboBox(
+            plantilla_card_qr,
+            variable=self.plantilla_qr_var,
+            values=["Clásico (Por Defecto)"] + [t["name"] for t in obtener_lista_plantillas()],
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8,
+            command=self.schedule_preview_update
+        )
+        self.plantilla_combo_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
 
         # Acciones QR
         actions_qr = customtkinter.CTkFrame(self.tab_qr, fg_color="transparent")
@@ -2077,6 +2512,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         actions_envio.grid_columnconfigure(0, weight=1)
         customtkinter.CTkButton(actions_envio, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
 
+        # Inicializar UI del Editor de Plantillas
+        self._setup_editor_ui()
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
@@ -2084,6 +2522,13 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             
         # Evento específico para recargar logo si cambia la ruta
         self.logo_path_var.trace_add("write", self.on_logo_path_change)
+        
+        # Eventos para campos del Editor de Plantillas
+        for var in [self.editor_el_type_var, self.editor_el_x_var, self.editor_el_y_var, 
+                    self.editor_el_w_var, self.editor_el_h_var, self.editor_el_content_var, 
+                    self.editor_el_font_size_var, self.editor_el_font_style_var, self.editor_el_align_var,
+                    self.editor_temp_name_var, self.editor_temp_w_var, self.editor_temp_h_var]:
+            var.trace_add("write", self.on_editor_field_change)
             
         # Binds para el cuadro de texto de IMEIs
         self.imeis_textbox.bind("<KeyRelease>", self.on_imeis_text_change)
@@ -2120,33 +2565,95 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             if self.cached_logo_pil is None and self.logo_path_var.get().strip():
                 self.cargar_y_cachear_logo()
             
+            w_in = 4.0
+            h_in = 3.0
+            
             if tab_activa == "Código de Barras":
-                pil_image = _generar_etiqueta_barcode_pil_image(
-                    self.modelo_var.get().strip().upper(),
-                    self.imei_var.get().strip().upper(),
-                    "",
-                    self.cached_logo_pil
-                )
+                selected_template_name = self.plantilla_bc_var.get()
+                if selected_template_name == "Clásico (Por Defecto)":
+                    pil_image = _generar_etiqueta_barcode_pil_image(
+                        self.modelo_var.get().strip().upper(),
+                        self.imei_var.get().strip().upper(),
+                        "",
+                        self.cached_logo_pil
+                    )
+                else:
+                    plantillas = obtener_lista_plantillas()
+                    template = next((t for t in plantillas if t["name"] == selected_template_name), None)
+                    if template:
+                        w_in = float(template.get("width_inches", 4.0))
+                        h_in = float(template.get("height_inches", 3.0))
+                        datos = {
+                            "modelo": self.modelo_var.get().strip().upper(),
+                            "imei": self.imei_var.get().strip().upper()
+                        }
+                        pil_image = _generar_etiqueta_plantilla_pil_image(template, datos, self.cached_logo_pil)
+                    else:
+                        pil_image = _generar_etiqueta_barcode_pil_image(self.modelo_var.get().strip().upper(), self.imei_var.get().strip().upper(), "", self.cached_logo_pil)
+                        
             elif tab_activa == "Gestión de Destinatario":
                 pil_image = _generar_etiqueta_2x4_pil_image(
                     self.envio_destinatario_var.get(),
                     self.envio_origen_var.get(),
                     self.envio_destino_var.get()
                 )
-            else:  # Código QR
+                
+            elif tab_activa == "Código QR":
                 imeis = self.obtener_imeis_del_texto()
                 self.actualizar_contador_imeis()
-                pil_image = _generar_etiqueta_qr_pil_image(
-                    self.modelo_var.get().strip().upper(),
-                    imeis,
-                    self.cached_logo_pil
-                )
                 
+                selected_template_name = self.plantilla_qr_var.get()
+                if selected_template_name == "Clásico (Por Defecto)":
+                    pil_image = _generar_etiqueta_qr_pil_image(
+                        self.modelo_var.get().strip().upper(),
+                        imeis,
+                        self.cached_logo_pil
+                    )
+                else:
+                    plantillas = obtener_lista_plantillas()
+                    template = next((t for t in plantillas if t["name"] == selected_template_name), None)
+                    if template:
+                        w_in = float(template.get("width_inches", 4.0))
+                        h_in = float(template.get("height_inches", 3.0))
+                        datos = {
+                            "modelo": self.modelo_var.get().strip().upper(),
+                            "imei": imeis[0] if imeis else "",
+                            "imeis": imeis
+                        }
+                        pil_image = _generar_etiqueta_plantilla_pil_image(template, datos, self.cached_logo_pil)
+                    else:
+                        pil_image = _generar_etiqueta_qr_pil_image(self.modelo_var.get().strip().upper(), imeis, self.cached_logo_pil)
+                        
+            elif tab_activa == "Editor de Plantillas":
+                plantillas = obtener_lista_plantillas()
+                selected_temp_name = self.editor_template_var.get()
+                template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+                if not template:
+                    self.preview_image_label.configure(image=None, text="Selecciona o crea una plantilla.")
+                    return
+                    
+                w_in = float(template.get("width_inches", 4.0))
+                h_in = float(template.get("height_inches", 3.0))
+                
+                datos_prueba = {
+                    "modelo": "IPHONE 15 PRO MAX",
+                    "imei": "350123456789012",
+                    "imeis": ["350123456789012", "350123456789013"],
+                    "destinatario": "MICAEL CEDANO",
+                    "origen": "YACELLTECH",
+                    "destino": "SANTO DOMINGO",
+                    "cantidad": "1"
+                }
+                pil_image = _generar_etiqueta_plantilla_pil_image(template, datos_prueba, self.cached_logo_pil)
+                
+            else:
+                return
+                
+            preview_h = int(PREVIEW_MAX_WIDTH * (h_in / w_in))
             self.preview_ctk_image = pil_to_tk_image_safe(
                 pil_image,
-                size=(PREVIEW_MAX_WIDTH, PREVIEW_MAX_HEIGHT)
+                size=(PREVIEW_MAX_WIDTH, preview_h)
             )
-            
             self.preview_image_label.configure(image=self.preview_ctk_image, text="")
         except Exception as e:
             self.preview_image_label.configure(image=None, text=f"Error en preview:\n{e}")
@@ -2170,11 +2677,26 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             messagebox.showerror("Campo Obligatorio", "El campo 'Modelo' es obligatorio.")
             return
         path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
-        temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(
-            modelo, imei,
-            "",
-            path_logo_pdf
-        )
+        
+        selected_template_name = self.plantilla_bc_var.get()
+        if selected_template_name == "Clásico (Por Defecto)":
+            temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(
+                modelo, imei,
+                "",
+                path_logo_pdf
+            )
+        else:
+            plantillas = obtener_lista_plantillas()
+            template = next((t for t in plantillas if t["name"] == selected_template_name), None)
+            if template:
+                datos = {
+                    "modelo": modelo,
+                    "imei": imei
+                }
+                temp_pdf_path = _generar_etiqueta_plantilla_pdf_temporal(template, datos, path_logo_pdf)
+            else:
+                temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(modelo, imei, "", path_logo_pdf)
+                
         if not temp_pdf_path or not os.path.exists(temp_pdf_path):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
             return
@@ -2196,11 +2718,27 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             return
             
         path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
-        temp_pdf_path = _generar_etiqueta_qr_pdf_temporal(
-            modelo,
-            imeis,
-            path_logo_pdf
-        )
+        
+        selected_template_name = self.plantilla_qr_var.get()
+        if selected_template_name == "Clásico (Por Defecto)":
+            temp_pdf_path = _generar_etiqueta_qr_pdf_temporal(
+                modelo,
+                imeis,
+                path_logo_pdf
+            )
+        else:
+            plantillas = obtener_lista_plantillas()
+            template = next((t for t in plantillas if t["name"] == selected_template_name), None)
+            if template:
+                datos = {
+                    "modelo": modelo,
+                    "imei": imeis[0] if imeis else "",
+                    "imeis": imeis
+                }
+                temp_pdf_path = _generar_etiqueta_plantilla_pdf_temporal(template, datos, path_logo_pdf)
+            else:
+                temp_pdf_path = _generar_etiqueta_qr_pdf_temporal(modelo, imeis, path_logo_pdf)
+                
         if not temp_pdf_path or not os.path.exists(temp_pdf_path):
             messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
             return
@@ -3219,6 +3757,555 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         except Exception as e:
             messagebox.showerror("Error de Instalación", f"No se pudo iniciar la actualización:\n{e}")
 
+    # --- Métodos del Editor de Plantillas ---
+    def _setup_editor_ui(self):
+        inputs_editor = customtkinter.CTkFrame(self.tab_editor, fg_color="transparent")
+        inputs_editor.grid(row=0, column=0, sticky="nsew")
+        inputs_editor.grid_columnconfigure(0, weight=1)
+
+        self.editor_template_var = tk.StringVar()
+        self.editor_temp_name_var = tk.StringVar()
+        self.editor_temp_w_var = tk.StringVar()
+        self.editor_temp_h_var = tk.StringVar()
+        
+        self.editor_el_type_var = tk.StringVar()
+        self.editor_el_x_var = tk.StringVar()
+        self.editor_el_y_var = tk.StringVar()
+        self.editor_el_w_var = tk.StringVar()
+        self.editor_el_h_var = tk.StringVar()
+        self.editor_el_content_var = tk.StringVar()
+        self.editor_el_font_size_var = tk.StringVar()
+        self.editor_el_font_style_var = tk.StringVar()
+        self.editor_el_align_var = tk.StringVar()
+        
+        self.editor_selected_element_idx = None
+        
+        # 1. Tarjeta Selección
+        sel_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        sel_card.grid(row=0, column=0, padx=5, pady=(5, 8), sticky="ew")
+        sel_card.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(sel_card, text="Seleccionar Plantilla", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        
+        sel_frame = customtkinter.CTkFrame(sel_card, fg_color="transparent")
+        sel_frame.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        sel_frame.grid_columnconfigure(0, weight=1)
+        
+        self.editor_template_combo = customtkinter.CTkComboBox(
+            sel_frame,
+            variable=self.editor_template_var,
+            values=[t["name"] for t in obtener_lista_plantillas()],
+            command=self.on_editor_template_select,
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            height=32,
+            corner_radius=8
+        )
+        self.editor_template_combo.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        
+        # Botones Gestión
+        gest_frame = customtkinter.CTkFrame(sel_card, fg_color="transparent")
+        gest_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
+        gest_frame.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkButton(gest_frame, text="Nueva", height=28, corner_radius=6, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.crear_nueva_plantilla).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        customtkinter.CTkButton(gest_frame, text="Eliminar", height=28, corner_radius=6, fg_color="#EF4444", hover_color="#DC2626", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.eliminar_plantilla_seleccionada).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        # 2. Tarjeta Propiedades Generales
+        prop_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        prop_card.grid(row=1, column=0, padx=5, pady=(0, 8), sticky="ew")
+        prop_card.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkLabel(prop_card, text="Nombre de la Plantilla", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 1), sticky="w")
+        self.editor_name_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_name_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
+        self.editor_name_entry.grid(row=1, column=0, columnspan=2, padx=12, pady=(0, 6), sticky="ew")
+        
+        customtkinter.CTkLabel(prop_card, text="Ancho (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(0, 1), sticky="w")
+        self.editor_w_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_w_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
+        self.editor_w_entry.grid(row=3, column=0, padx=(12, 4), pady=(0, 8), sticky="ew")
+        
+        customtkinter.CTkLabel(prop_card, text="Alto (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=1, padx=4, pady=(0, 1), sticky="w")
+        self.editor_h_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_h_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
+        self.editor_h_entry.grid(row=3, column=1, padx=(4, 12), pady=(0, 8), sticky="ew")
+        
+        # 3. Tarjeta Elementos
+        el_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        el_card.grid(row=2, column=0, padx=5, pady=(0, 8), sticky="ew")
+        el_card.grid_columnconfigure(0, weight=1)
+        
+        el_header = customtkinter.CTkFrame(el_card, fg_color="transparent")
+        el_header.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        el_header.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(el_header, text="Elementos del Diseño", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        
+        self.editor_el_list_frame = customtkinter.CTkScrollableFrame(el_card, height=80, fg_color="#1E293B", corner_radius=8)
+        self.editor_el_list_frame.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="ew")
+        self.editor_el_list_frame.grid_columnconfigure(0, weight=1)
+        
+        el_btns = customtkinter.CTkFrame(el_card, fg_color="transparent")
+        el_btns.grid(row=2, column=0, padx=12, pady=(0, 8), sticky="ew")
+        el_btns.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkButton(el_btns, text="+ Añadir", height=28, corner_radius=6, fg_color="#3b82f6", hover_color="#2563eb", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.editor_add_element).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        customtkinter.CTkButton(el_btns, text="- Eliminar", height=28, corner_radius=6, fg_color="#EF4444", hover_color="#DC2626", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.editor_delete_element).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        # 4. Tarjeta Propiedades del Elemento Seleccionado
+        self.el_prop_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        self.el_prop_card.grid(row=3, column=0, padx=5, pady=(0, 8), sticky="ew")
+        self.el_prop_card.grid_columnconfigure((0, 1), weight=1)
+        
+        customtkinter.CTkLabel(self.el_prop_card, text="Propiedades del Elemento", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 2), sticky="w")
+        
+        customtkinter.CTkLabel(self.el_prop_card, text="Tipo", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=1, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_type_combo = customtkinter.CTkComboBox(
+            self.el_prop_card,
+            variable=self.editor_el_type_var,
+            values=["Texto", "Código de Barras", "Código QR", "Logo"],
+            command=self.on_editor_el_type_change,
+            height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569"
+        )
+        self.editor_el_type_combo.grid(row=1, column=1, padx=12, pady=2, sticky="ew")
+        
+        customtkinter.CTkLabel(self.el_prop_card, text="Pos X (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_x_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_x_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_x_entry.grid(row=2, column=1, padx=12, pady=2, sticky="ew")
+        
+        customtkinter.CTkLabel(self.el_prop_card, text="Pos Y (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=3, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_y_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_y_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_y_entry.grid(row=3, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_w = customtkinter.CTkLabel(self.el_prop_card, text="Ancho (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_w.grid(row=4, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_w_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_w_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_w_entry.grid(row=4, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_h = customtkinter.CTkLabel(self.el_prop_card, text="Alto (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_h.grid(row=5, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_h_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_h_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_h_entry.grid(row=5, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_content = customtkinter.CTkLabel(self.el_prop_card, text="Contenido", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_content.grid(row=6, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_content_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_content_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_content_entry.grid(row=6, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_font_size = customtkinter.CTkLabel(self.el_prop_card, text="Tam. Fuente", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_font_size.grid(row=7, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_font_size_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_font_size_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_font_size_entry.grid(row=7, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_font_style = customtkinter.CTkLabel(self.el_prop_card, text="Estilo Fuente", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_font_style.grid(row=8, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_font_style_combo = customtkinter.CTkComboBox(
+            self.el_prop_card,
+            variable=self.editor_el_font_style_var,
+            values=["Negrita", "Normal"],
+            height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569"
+        )
+        self.editor_el_font_style_combo.grid(row=8, column=1, padx=12, pady=2, sticky="ew")
+        
+        self.lbl_el_align = customtkinter.CTkLabel(self.el_prop_card, text="Alineación", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
+        self.lbl_el_align.grid(row=9, column=0, padx=12, pady=1, sticky="w")
+        self.editor_el_align_combo = customtkinter.CTkComboBox(
+            self.el_prop_card,
+            variable=self.editor_el_align_var,
+            values=["Centro", "Izquierda", "Derecha"],
+            height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569"
+        )
+        self.editor_el_align_combo.grid(row=9, column=1, padx=12, pady=2, sticky="ew")
+
+        # 5. Guardar Plantilla
+        actions_editor = customtkinter.CTkFrame(self.tab_editor, fg_color="transparent")
+        actions_editor.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_editor.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkButton(actions_editor, text="Guardar Plantilla", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.guardar_plantilla_editor).grid(row=0, column=0, padx=0, sticky="ew")
+
+        # Cargar primera plantilla si existe
+        plantillas = obtener_lista_plantillas()
+        if plantillas:
+            self.editor_template_var.set(plantillas[0]["name"])
+            self.cargar_plantilla_en_editor(plantillas[0])
+
+    def on_editor_template_select(self, val):
+        plantillas = obtener_lista_plantillas()
+        for t in plantillas:
+            if t["name"] == val:
+                self.cargar_plantilla_en_editor(t)
+                break
+
+    def cargar_plantilla_en_editor(self, template):
+        self.editor_temp_name_var.set(template.get("name", ""))
+        self.editor_temp_w_var.set(str(template.get("width_inches", 4.0)))
+        self.editor_temp_h_var.set(str(template.get("height_inches", 3.0)))
+        
+        # Limpiar lista anterior
+        for widget in self.editor_el_list_frame.winfo_children():
+            widget.destroy()
+            
+        elements = template.get("elements", [])
+        self.editor_selected_element_idx = None
+        
+        for i, el in enumerate(elements):
+            el_type = el.get("type", "text")
+            descr = f"{i+1}. {el_type.upper()}"
+            if el_type == "text":
+                descr += f": {el.get('content', '')[:15]}"
+            elif el_type in ("barcode", "qrcode"):
+                descr += f" ({el.get('value_source', 'imei')})"
+                
+            btn = customtkinter.CTkButton(
+                self.editor_el_list_frame,
+                text=descr,
+                anchor="w",
+                fg_color="transparent",
+                text_color="#F8FAFC",
+                hover_color="#334155",
+                height=24,
+                corner_radius=4,
+                command=lambda idx=i: self.on_editor_el_select(idx)
+            )
+            btn.grid(row=i, column=0, sticky="ew", pady=1)
+            
+        if elements:
+            self.on_editor_el_select(0)
+        else:
+            self.editor_selected_element_idx = None
+            self.editor_el_type_var.set("")
+            self.editor_el_x_var.set("")
+            self.editor_el_y_var.set("")
+            self.editor_el_w_var.set("")
+            self.editor_el_h_var.set("")
+            self.editor_el_content_var.set("")
+            self.editor_el_font_size_var.set("")
+            self.editor_el_font_style_var.set("")
+            self.editor_el_align_var.set("")
+            
+        self.schedule_preview_update()
+
+    def on_editor_el_select(self, idx):
+        self.editor_selected_element_idx = idx
+        
+        for i, widget in enumerate(self.editor_el_list_frame.winfo_children()):
+            if isinstance(widget, customtkinter.CTkButton):
+                if i == idx:
+                    widget.configure(fg_color="#3b82f6")
+                else:
+                    widget.configure(fg_color="transparent")
+                    
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template or idx >= len(template["elements"]):
+            return
+            
+        el = template["elements"][idx]
+        
+        tipo_map = {"text": "Texto", "barcode": "Código de Barras", "qrcode": "Código QR", "logo": "Logo"}
+        friendly_type = tipo_map.get(el.get("type", "text"), "Texto")
+        
+        # Desactivar callbacks temporariamente para evitar loops de actualización
+        self._updating_editor_fields = True
+        try:
+            self.editor_el_type_var.set(friendly_type)
+            self.editor_el_x_var.set(str(el.get("x", 0.0)))
+            self.editor_el_y_var.set(str(el.get("y", 0.0)))
+            self.editor_el_w_var.set(str(el.get("width", 1.0)))
+            self.editor_el_h_var.set(str(el.get("height", 1.0)))
+            
+            if el.get("type") in ("barcode", "qrcode"):
+                self.editor_el_content_var.set(el.get("value_source", "imei"))
+            else:
+                self.editor_el_content_var.set(el.get("content", ""))
+                
+            self.editor_el_font_size_var.set(str(el.get("font_size", 12)))
+            
+            style_map = {"bold": "Negrita", "regular": "Normal"}
+            self.editor_el_font_style_var.set(style_map.get(el.get("font_style", "bold"), "Negrita"))
+            
+            align_map = {"center": "Centro", "left": "Izquierda", "right": "Derecha"}
+            self.editor_el_align_var.set(align_map.get(el.get("align", "center"), "Centro"))
+            
+            self.actualizar_interfaz_propiedades(friendly_type)
+        finally:
+            self._updating_editor_fields = False
+            
+        self.schedule_preview_update()
+
+    def on_editor_el_type_change(self, val):
+        self.actualizar_interfaz_propiedades(val)
+        self.guardar_cambios_elemento_actual_memoria()
+
+    def actualizar_interfaz_propiedades(self, el_type):
+        if el_type == "Texto":
+            self.editor_el_w_entry.configure(state="disabled")
+            self.editor_el_h_entry.configure(state="disabled")
+            self.editor_el_content_entry.configure(state="normal")
+            self.editor_el_font_size_entry.configure(state="normal")
+            self.editor_el_font_style_combo.configure(state="normal")
+            self.editor_el_align_combo.configure(state="normal")
+            self.lbl_el_content.configure(text="Contenido")
+        elif el_type in ("Código de Barras", "Código QR"):
+            self.editor_el_w_entry.configure(state="normal")
+            self.editor_el_h_entry.configure(state="normal")
+            self.editor_el_content_entry.configure(state="normal")
+            self.editor_el_font_size_entry.configure(state="disabled")
+            self.editor_el_font_style_combo.configure(state="disabled")
+            self.editor_el_align_combo.configure(state="normal")
+            self.lbl_el_content.configure(text="Origen Datos")
+        elif el_type == "Logo":
+            self.editor_el_w_entry.configure(state="normal")
+            self.editor_el_h_entry.configure(state="normal")
+            self.editor_el_content_entry.configure(state="disabled")
+            self.editor_el_font_size_entry.configure(state="disabled")
+            self.editor_el_font_style_combo.configure(state="disabled")
+            self.editor_el_align_combo.configure(state="normal")
+
+    def guardar_cambios_elemento_actual_memoria(self):
+        if self.editor_selected_element_idx is None:
+            return
+            
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template or self.editor_selected_element_idx >= len(template["elements"]):
+            return
+            
+        friendly_type = self.editor_el_type_var.get()
+        tipo_map = {"Texto": "text", "Código de Barras": "barcode", "Código QR": "qrcode", "Logo": "logo"}
+        el_type = tipo_map.get(friendly_type, "text")
+        
+        el = template["elements"][self.editor_selected_element_idx]
+        el["type"] = el_type
+        
+        try: el["x"] = float(self.editor_el_x_var.get())
+        except ValueError: el["x"] = 0.0
+        
+        try: el["y"] = float(self.editor_el_y_var.get())
+        except ValueError: el["y"] = 0.0
+        
+        if el_type in ("logo", "barcode", "qrcode"):
+            try: el["width"] = float(self.editor_el_w_var.get())
+            except ValueError: el["width"] = 1.0
+            
+            try: el["height"] = float(self.editor_el_h_var.get())
+            except ValueError: el["height"] = 1.0
+            
+        if el_type == "text":
+            el["content"] = self.editor_el_content_var.get()
+            try: el["font_size"] = int(self.editor_el_font_size_var.get())
+            except ValueError: el["font_size"] = 12
+            
+            style_map = {"Negrita": "bold", "Normal": "regular"}
+            el["font_style"] = style_map.get(self.editor_el_font_style_var.get(), "bold")
+        elif el_type in ("barcode", "qrcode"):
+            el["value_source"] = self.editor_el_content_var.get()
+            
+        align_map = {"Centro": "center", "Izquierda": "left", "Derecha": "right"}
+        el["align"] = align_map.get(self.editor_el_align_var.get(), "center")
+        
+        descr = f"{self.editor_selected_element_idx+1}. {el_type.upper()}"
+        if el_type == "text":
+            descr += f": {el.get('content', '')[:15]}"
+        elif el_type in ("barcode", "qrcode"):
+            descr += f" ({el.get('value_source', 'imei')})"
+            
+        for i, widget in enumerate(self.editor_el_list_frame.winfo_children()):
+            if i == self.editor_selected_element_idx and isinstance(widget, customtkinter.CTkButton):
+                widget.configure(text=descr)
+                break
+                
+        guardar_plantilla(template)
+
+    def crear_nueva_plantilla(self):
+        dialog = customtkinter.CTkInputDialog(text="Ingresa el nombre de la nueva plantilla:", title="Crear Plantilla")
+        name = dialog.get_input()
+        if name and name.strip():
+            name = name.strip()
+            plantillas = obtener_lista_plantillas()
+            if any(t["name"].lower() == name.lower() for t in plantillas):
+                messagebox.showerror("Error", "Ya existe una plantilla con ese nombre.")
+                return
+                
+            nueva_temp = {
+                "name": name,
+                "width_inches": 4.0,
+                "height_inches": 3.0,
+                "elements": [
+                    {"type": "text", "content": "Modelo: {modelo}", "x": 2.0, "y": 1.0, "font_size": 12, "font_style": "bold", "align": "center"}
+                ]
+            }
+            guardar_plantilla(nueva_temp)
+            
+            nuevas_plantillas = obtener_lista_plantillas()
+            self.editor_template_combo.configure(values=[t["name"] for t in nuevas_plantillas])
+            self.editor_template_var.set(name)
+            self.cargar_plantilla_en_editor(nueva_temp)
+            self.actualizar_combos_plantillas_modos()
+
+    def eliminar_plantilla_seleccionada(self):
+        selected_temp_name = self.editor_template_var.get()
+        if not selected_temp_name:
+            return
+            
+        plantillas = obtener_lista_plantillas()
+        if len(plantillas) <= 1:
+            messagebox.showerror("Error", "Debe existir al menos una plantilla.")
+            return
+            
+        if messagebox.askyesno("Confirmar", f"¿Estás seguro de que deseas eliminar la plantilla '{selected_temp_name}'?"):
+            eliminar_plantilla(selected_temp_name)
+            
+            nuevas_plantillas = obtener_lista_plantillas()
+            self.editor_template_combo.configure(values=[t["name"] for t in nuevas_plantillas])
+            self.editor_template_var.set(nuevas_plantillas[0]["name"])
+            self.cargar_plantilla_en_editor(nuevas_plantillas[0])
+            self.actualizar_combos_plantillas_modos()
+
+    def editor_add_element(self):
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template:
+            return
+            
+        nuevo_el = {
+            "type": "text",
+            "content": "Nuevo Texto",
+            "x": 2.0,
+            "y": 1.5,
+            "font_size": 11,
+            "font_style": "regular",
+            "align": "center"
+        }
+        template["elements"].append(nuevo_el)
+        guardar_plantilla(template)
+        
+        self.cargar_plantilla_en_editor(template)
+        self.on_editor_el_select(len(template["elements"]) - 1)
+
+    def editor_delete_element(self):
+        if self.editor_selected_element_idx is None:
+            return
+            
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template or self.editor_selected_element_idx >= len(template["elements"]):
+            return
+            
+        del template["elements"][self.editor_selected_element_idx]
+        guardar_plantilla(template)
+        
+        self.cargar_plantilla_en_editor(template)
+
+    def guardar_plantilla_editor(self):
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template:
+            return
+            
+        nuevo_nombre = self.editor_temp_name_var.get().strip()
+        if not nuevo_nombre:
+            messagebox.showerror("Error", "El nombre de la plantilla no puede estar vacío.")
+            return
+            
+        nombre_anterior = template["name"]
+        if nuevo_nombre != nombre_anterior:
+            if any(t["name"].lower() == nuevo_nombre.lower() for t in plantillas):
+                messagebox.showerror("Error", "Ya existe otra plantilla con el nombre ingresado.")
+                return
+            eliminar_plantilla(nombre_anterior)
+            template["name"] = nuevo_nombre
+            
+        try: template["width_inches"] = float(self.editor_temp_w_var.get())
+        except ValueError: template["width_inches"] = 4.0
+        
+        try: template["height_inches"] = float(self.editor_temp_h_var.get())
+        except ValueError: template["height_inches"] = 3.0
+        
+        self.guardar_cambios_elemento_actual_memoria()
+        
+        guardar_plantilla(template)
+        
+        nuevas_plantillas = obtener_lista_plantillas()
+        self.editor_template_combo.configure(values=[t["name"] for t in nuevas_plantillas])
+        self.editor_template_var.set(nuevo_nombre)
+        self.cargar_plantilla_en_editor(template)
+        self.actualizar_combos_plantillas_modos()
+        
+        messagebox.showinfo("Guardado", f"Plantilla '{nuevo_nombre}' guardada con éxito.")
+
+    def on_editor_field_change(self, *args):
+        if hasattr(self, '_updating_editor_fields') and self._updating_editor_fields:
+            return
+            
+        try:
+            self._updating_editor_fields = True
+            if self.editor_selected_element_idx is not None:
+                plantillas = obtener_lista_plantillas()
+                selected_temp_name = self.editor_template_var.get()
+                template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+                if template and self.editor_selected_element_idx < len(template["elements"]):
+                    friendly_type = self.editor_el_type_var.get()
+                    tipo_map = {"Texto": "text", "Código de Barras": "barcode", "Código QR": "qrcode", "Logo": "logo"}
+                    el_type = tipo_map.get(friendly_type, "text")
+                    
+                    el = template["elements"][self.editor_selected_element_idx]
+                    el["type"] = el_type
+                    
+                    try: el["x"] = float(self.editor_el_x_var.get())
+                    except ValueError: el["x"] = 0.0
+                    
+                    try: el["y"] = float(self.editor_el_y_var.get())
+                    except ValueError: el["y"] = 0.0
+                    
+                    if el_type in ("logo", "barcode", "qrcode"):
+                        try: el["width"] = float(self.editor_el_w_var.get())
+                        except ValueError: el["width"] = 1.0
+                        
+                        try: el["height"] = float(self.editor_el_h_var.get())
+                        except ValueError: el["height"] = 1.0
+                        
+                    if el_type == "text":
+                        el["content"] = self.editor_el_content_var.get()
+                        try: el["font_size"] = int(self.editor_el_font_size_var.get())
+                        except ValueError: el["font_size"] = 12
+                        
+                        style_map = {"Negrita": "bold", "Normal": "regular"}
+                        el["font_style"] = style_map.get(self.editor_el_font_style_var.get(), "bold")
+                    elif el_type in ("barcode", "qrcode"):
+                        el["value_source"] = self.editor_el_content_var.get()
+                        
+                    align_map = {"Centro": "center", "Izquierda": "left", "Derecha": "right"}
+                    el["align"] = align_map.get(self.editor_el_align_var.get(), "center")
+                    
+                    descr = f"{self.editor_selected_element_idx+1}. {el_type.upper()}"
+                    if el_type == "text":
+                        descr += f": {el.get('content', '')[:15]}"
+                    elif el_type in ("barcode", "qrcode"):
+                        descr += f" ({el.get('value_source', 'imei')})"
+                        
+                    for i, widget in enumerate(self.editor_el_list_frame.winfo_children()):
+                        if i == self.editor_selected_element_idx and isinstance(widget, customtkinter.CTkButton):
+                            widget.configure(text=descr)
+                            break
+                            
+                    guardar_plantilla(template)
+                    
+            self.schedule_preview_update()
+        finally:
+            self._updating_editor_fields = False
+
+    def actualizar_combos_plantillas_modos(self):
+        nombres = ["Clásico (Por Defecto)"] + [t["name"] for t in obtener_lista_plantillas()]
+        if hasattr(self, 'plantilla_combo_bc') and self.plantilla_combo_bc:
+            self.plantilla_combo_bc.configure(values=nombres)
+        if hasattr(self, 'plantilla_combo_qr') and self.plantilla_combo_qr:
+            self.plantilla_combo_qr.configure(values=nombres)
 
 if __name__ == "__main__":
     customtkinter.set_appearance_mode("dark")
