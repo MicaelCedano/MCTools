@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.3"
+VERSION = "3.5.4"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1589,10 +1589,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tabview.grid_rowconfigure(0, weight=1)
         self.tabview.grid_columnconfigure(0, weight=1)
         
+        self.tab_procesador = self.tabview.add("Procesador")
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
-        self.tab_procesador = self.tabview.add("Procesador")
         self.tab_envio = self.tabview.add("Gestión de Destinatario")
+        self.tabview.set("Procesador")
         
         # Configure columns inside tabs
         self.tab_barcode.grid_columnconfigure(0, weight=1)
@@ -2165,8 +2166,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             return
         modelo = self.modelo_var.get().strip().upper()
         imei = self.imei_var.get().strip().upper()
-        if not modelo or not imei:
-            messagebox.showerror("Campos Obligatorios", "'Modelo' e 'IMEI' son campos obligatorios.")
+        if not modelo:
+            messagebox.showerror("Campo Obligatorio", "El campo 'Modelo' es obligatorio.")
             return
         path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
         temp_pdf_path = _generar_etiqueta_barcode_pdf_temporal(
@@ -2346,10 +2347,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def _finalizar_generacion(self, temp_pdf_path, modelo, identificador, guardar_permanente=False, imprimir_despues=False):
         self.aprender_modelo_actual()
         if guardar_permanente:
+            ident_str = identificador if identificador.strip() else "sin_imei"
             path_salida = filedialog.asksaveasfilename(
                 title="Guardar Etiqueta PDF",
                 defaultextension=".pdf",
-                initialfile=f"etiqueta_{modelo}_{identificador}.pdf".replace(" ", "_"),
+                initialfile=f"etiqueta_{modelo}_{ident_str}.pdf".replace(" ", "_"),
                 filetypes=[("Archivos PDF", "*.pdf"), ("Todos", "*.*")]
             )
             if path_salida:
