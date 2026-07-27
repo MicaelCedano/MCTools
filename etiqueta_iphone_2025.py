@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.6"
+VERSION = "3.5.7"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1855,7 +1855,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Crear Frames
         self.controls_frame = customtkinter.CTkFrame(self, width=380, corner_radius=0, fg_color="#1E293B", border_width=1, border_color="#334155")
         self.controls_frame.grid(row=0, column=0, sticky="nsw")
-        self.controls_frame.grid_rowconfigure(2, weight=1)  # Expand tabview area
+        self.controls_frame.grid_rowconfigure(1, weight=1)  # Expand tabview area
+        self.controls_frame.grid_rowconfigure(2, weight=0)  # Fixed footer area
 
         self.preview_frame = customtkinter.CTkFrame(self, fg_color="#1E293B", corner_radius=16, border_width=1, border_color="#334155")
         self.preview_frame.grid(row=0, column=1, padx=25, pady=25, sticky="nsew")
@@ -3858,85 +3859,66 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # 4. Tarjeta Propiedades del Elemento Seleccionado (2 Columnas - Compacto tipo Word)
         self.el_prop_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
         self.el_prop_card.grid(row=3, column=0, padx=5, pady=(0, 8), sticky="ew")
-        self.el_prop_card.grid_columnconfigure((0, 1), weight=1)
+        self.el_prop_card.grid_columnconfigure(0, weight=1, uniform="prop_cols")
+        self.el_prop_card.grid_columnconfigure(1, weight=1, uniform="prop_cols")
         
-        customtkinter.CTkLabel(self.el_prop_card, text="Propiedades del Elemento", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 4), sticky="w")
+        customtkinter.CTkLabel(self.el_prop_card, text="Propiedades del Elemento", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#06B6D4").grid(row=0, column=0, columnspan=2, padx=12, pady=(8, 6), sticky="w")
         
-        # Fila 1: Tipo | Contenido/Origen
-        col0_f1 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col0_f1.grid(row=1, column=0, padx=(12, 6), pady=2, sticky="ew")
-        col0_f1.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(col0_f1, text="Tipo", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        # Fila 1: Tipo | Contenido
+        customtkinter.CTkLabel(self.el_prop_card, text="Tipo", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=1, column=0, padx=(12, 6), pady=(2, 0), sticky="w")
+        self.lbl_el_content = customtkinter.CTkLabel(self.el_prop_card, text="Contenido", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_content.grid(row=1, column=1, padx=(6, 12), pady=(2, 0), sticky="w")
+        
         self.editor_el_type_combo = customtkinter.CTkComboBox(
-            col0_f1,
+            self.el_prop_card,
             variable=self.editor_el_type_var,
             values=["Texto", "Código de Barras", "Código QR", "Logo"],
             command=self.on_editor_el_type_change,
             height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569"
         )
-        self.editor_el_type_combo.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_type_combo.grid(row=2, column=0, padx=(12, 6), pady=(0, 6), sticky="ew")
         
-        col1_f1 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col1_f1.grid(row=1, column=1, padx=(6, 12), pady=2, sticky="ew")
-        col1_f1.grid_columnconfigure(0, weight=1)
-        self.lbl_el_content = customtkinter.CTkLabel(col1_f1, text="Contenido", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_content.grid(row=0, column=0, sticky="w")
-        self.editor_el_content_entry = customtkinter.CTkEntry(col1_f1, textvariable=self.editor_el_content_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
-        self.editor_el_content_entry.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_content_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_content_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_content_entry.grid(row=2, column=1, padx=(6, 12), pady=(0, 6), sticky="ew")
         
         # Fila 2: Pos X | Pos Y
-        col0_f2 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col0_f2.grid(row=2, column=0, padx=(12, 6), pady=2, sticky="ew")
-        col0_f2.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(col0_f2, text="Pos X (in)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
-        self.editor_el_x_entry = customtkinter.CTkEntry(col0_f2, textvariable=self.editor_el_x_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
-        self.editor_el_x_entry.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        customtkinter.CTkLabel(self.el_prop_card, text="Pos X (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=3, column=0, padx=(12, 6), pady=(2, 0), sticky="w")
+        customtkinter.CTkLabel(self.el_prop_card, text="Pos Y (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=3, column=1, padx=(6, 12), pady=(2, 0), sticky="w")
         
-        col1_f2 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col1_f2.grid(row=2, column=1, padx=(6, 12), pady=2, sticky="ew")
-        col1_f2.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkLabel(col1_f2, text="Pos Y (in)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
-        self.editor_el_y_entry = customtkinter.CTkEntry(col1_f2, textvariable=self.editor_el_y_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
-        self.editor_el_y_entry.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_x_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_x_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_x_entry.grid(row=4, column=0, padx=(12, 6), pady=(0, 6), sticky="ew")
+        
+        self.editor_el_y_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_y_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_y_entry.grid(row=4, column=1, padx=(6, 12), pady=(0, 6), sticky="ew")
         
         # Fila 3: Ancho | Alto
-        col0_f3 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col0_f3.grid(row=3, column=0, padx=(12, 6), pady=2, sticky="ew")
-        col0_f3.grid_columnconfigure(0, weight=1)
-        self.lbl_el_w = customtkinter.CTkLabel(col0_f3, text="Ancho (in)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_w.grid(row=0, column=0, sticky="w")
-        self.editor_el_w_entry = customtkinter.CTkEntry(col0_f3, textvariable=self.editor_el_w_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
-        self.editor_el_w_entry.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.lbl_el_w = customtkinter.CTkLabel(self.el_prop_card, text="Ancho (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_w.grid(row=5, column=0, padx=(12, 6), pady=(2, 0), sticky="w")
+        self.lbl_el_h = customtkinter.CTkLabel(self.el_prop_card, text="Alto (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_h.grid(row=5, column=1, padx=(6, 12), pady=(2, 0), sticky="w")
         
-        col1_f3 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col1_f3.grid(row=3, column=1, padx=(6, 12), pady=2, sticky="ew")
-        col1_f3.grid_columnconfigure(0, weight=1)
-        self.lbl_el_h = customtkinter.CTkLabel(col1_f3, text="Alto (in)", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_h.grid(row=0, column=0, sticky="w")
-        self.editor_el_h_entry = customtkinter.CTkEntry(col1_f3, textvariable=self.editor_el_h_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
-        self.editor_el_h_entry.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_w_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_w_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_w_entry.grid(row=6, column=0, padx=(12, 6), pady=(0, 6), sticky="ew")
+        
+        self.editor_el_h_entry = customtkinter.CTkEntry(self.el_prop_card, textvariable=self.editor_el_h_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569")
+        self.editor_el_h_entry.grid(row=6, column=1, padx=(6, 12), pady=(0, 6), sticky="ew")
         
         # Fila 4: Tam Fuente | Estilo Fuente
-        col0_f4 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col0_f4.grid(row=4, column=0, padx=(12, 6), pady=2, sticky="ew")
-        col0_f4.grid_columnconfigure(0, weight=1)
-        self.lbl_el_font_size = customtkinter.CTkLabel(col0_f4, text="Tam. Fuente", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_font_size.grid(row=0, column=0, sticky="w")
+        self.lbl_el_font_size = customtkinter.CTkLabel(self.el_prop_card, text="Tam. Fuente", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_font_size.grid(row=7, column=0, padx=(12, 6), pady=(2, 0), sticky="w")
+        self.lbl_el_font_style = customtkinter.CTkLabel(self.el_prop_card, text="Estilo Fuente", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_font_style.grid(row=7, column=1, padx=(6, 12), pady=(2, 0), sticky="w")
+        
         self.editor_el_font_size_combo = customtkinter.CTkComboBox(
-            col0_f4,
+            self.el_prop_card,
             variable=self.editor_el_font_size_var,
             values=["8", "9", "10", "11", "12", "13", "14", "16", "18", "20", "24", "28", "32", "36"],
             height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569"
         )
-        self.editor_el_font_size_combo.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_font_size_combo.grid(row=8, column=0, padx=(12, 6), pady=(0, 6), sticky="ew")
         
-        col1_f4 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        col1_f4.grid(row=4, column=1, padx=(6, 12), pady=2, sticky="ew")
-        col1_f4.grid_columnconfigure(0, weight=1)
-        self.lbl_el_font_style = customtkinter.CTkLabel(col1_f4, text="Estilo Fuente", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_font_style.grid(row=0, column=0, sticky="w")
         self.editor_el_font_style_btn = customtkinter.CTkSegmentedButton(
-            col1_f4,
+            self.el_prop_card,
             variable=self.editor_el_font_style_var,
             values=["Normal", "Negrita"],
             height=28,
@@ -3949,16 +3931,14 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text_color="#F8FAFC",
             command=self.on_editor_field_change
         )
-        self.editor_el_font_style_btn.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_font_style_btn.grid(row=8, column=1, padx=(6, 12), pady=(0, 6), sticky="ew")
         
-        # Fila 5: Alineación (Span 2)
-        f5 = customtkinter.CTkFrame(self.el_prop_card, fg_color="transparent")
-        f5.grid(row=5, column=0, columnspan=2, padx=12, pady=(2, 10), sticky="ew")
-        f5.grid_columnconfigure(0, weight=1)
-        self.lbl_el_align = customtkinter.CTkLabel(f5, text="Alineación", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#94A3B8")
-        self.lbl_el_align.grid(row=0, column=0, sticky="w")
+        # Fila 5: Alineación
+        self.lbl_el_align = customtkinter.CTkLabel(self.el_prop_card, text="Alineación", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8")
+        self.lbl_el_align.grid(row=9, column=0, columnspan=2, padx=12, pady=(2, 0), sticky="w")
+        
         self.editor_el_align_btn = customtkinter.CTkSegmentedButton(
-            f5,
+            self.el_prop_card,
             variable=self.editor_el_align_var,
             values=["Izquierda", "Centro", "Derecha"],
             height=28,
@@ -3971,7 +3951,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text_color="#F8FAFC",
             command=self.on_editor_field_change
         )
-        self.editor_el_align_btn.grid(row=1, column=0, sticky="ew", pady=(2, 0))
+        self.editor_el_align_btn.grid(row=10, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="ew")
 
         # 5. Guardar Plantilla
         actions_editor = customtkinter.CTkFrame(self.tab_editor, fg_color="transparent")
