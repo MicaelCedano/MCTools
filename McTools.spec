@@ -54,7 +54,7 @@ for pkg in ['PIL', 'customtkinter', 'reportlab', 'barcode', 'qrcode']:
         print(f"Advertencia al recolectar hooks de {pkg}: {e}")
 
 a = Analysis(
-    ['etiqueta_iphone_2025.py'],
+    ['main.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
