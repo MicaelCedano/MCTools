@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.5.7"
+VERSION = "3.5.8"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -2527,8 +2527,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Eventos para campos del Editor de Plantillas
         for var in [self.editor_el_type_var, self.editor_el_x_var, self.editor_el_y_var, 
                     self.editor_el_w_var, self.editor_el_h_var, self.editor_el_content_var, 
-                    self.editor_el_font_size_var, self.editor_el_font_style_var, self.editor_el_align_var,
-                    self.editor_temp_name_var, self.editor_temp_w_var, self.editor_temp_h_var]:
+                    self.editor_el_font_size_var, self.editor_el_font_style_var, self.editor_el_align_var]:
             var.trace_add("write", self.on_editor_field_change)
             
         # Binds para el cuadro de texto de IMEIs
@@ -3763,7 +3762,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_editor.grid_rowconfigure(0, weight=1)
         self.tab_editor.grid_columnconfigure(0, weight=1)
 
-        inputs_editor = customtkinter.CTkScrollableFrame(self.tab_editor, fg_color="transparent", scrollbar_button_color="#334155", scrollbar_button_hover_color="#475569")
+        inputs_editor = customtkinter.CTkFrame(self.tab_editor, fg_color="transparent")
         inputs_editor.grid(row=0, column=0, sticky="nsew", pady=(0, 5))
         inputs_editor.grid_columnconfigure(0, weight=1)
 
@@ -3810,34 +3809,18 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         self.editor_template_combo.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         
-        # Botones Gestión
+        # Botones Gestión (Nueva | Ajustes | Eliminar)
         gest_frame = customtkinter.CTkFrame(sel_card, fg_color="transparent")
         gest_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
-        gest_frame.grid_columnconfigure((0, 1), weight=1)
+        gest_frame.grid_columnconfigure((0, 1, 2), weight=1)
         
-        customtkinter.CTkButton(gest_frame, text="Nueva", height=28, corner_radius=6, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.crear_nueva_plantilla).grid(row=0, column=0, padx=(0, 4), sticky="ew")
-        customtkinter.CTkButton(gest_frame, text="Eliminar", height=28, corner_radius=6, fg_color="#EF4444", hover_color="#DC2626", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.eliminar_plantilla_seleccionada).grid(row=0, column=1, padx=(4, 0), sticky="ew")
-
-        # 2. Tarjeta Propiedades Generales
-        prop_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        prop_card.grid(row=1, column=0, padx=5, pady=(0, 8), sticky="ew")
-        prop_card.grid_columnconfigure((0, 1), weight=1)
+        customtkinter.CTkButton(gest_frame, text="Nueva", height=28, corner_radius=6, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.crear_nueva_plantilla).grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        customtkinter.CTkButton(gest_frame, text="Ajustes", height=28, corner_radius=6, fg_color="#3b82f6", hover_color="#2563eb", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.abrir_ajustes_plantilla).grid(row=0, column=1, padx=2, sticky="ew")
+        customtkinter.CTkButton(gest_frame, text="Eliminar", height=28, corner_radius=6, fg_color="#EF4444", hover_color="#DC2626", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.eliminar_plantilla_seleccionada).grid(row=0, column=2, padx=(2, 0), sticky="ew")
         
-        customtkinter.CTkLabel(prop_card, text="Nombre de la Plantilla", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, columnspan=2, padx=12, pady=(6, 1), sticky="w")
-        self.editor_name_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_name_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
-        self.editor_name_entry.grid(row=1, column=0, columnspan=2, padx=12, pady=(0, 6), sticky="ew")
-        
-        customtkinter.CTkLabel(prop_card, text="Ancho (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, padx=12, pady=(0, 1), sticky="w")
-        self.editor_w_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_w_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
-        self.editor_w_entry.grid(row=3, column=0, padx=(12, 4), pady=(0, 8), sticky="ew")
-        
-        customtkinter.CTkLabel(prop_card, text="Alto (pulgadas)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=1, padx=4, pady=(0, 1), sticky="w")
-        self.editor_h_entry = customtkinter.CTkEntry(prop_card, textvariable=self.editor_temp_h_var, height=28, corner_radius=6, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC")
-        self.editor_h_entry.grid(row=3, column=1, padx=(4, 12), pady=(0, 8), sticky="ew")
-        
-        # 3. Tarjeta Elementos
+        # 2. Tarjeta Elementos
         el_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        el_card.grid(row=2, column=0, padx=5, pady=(0, 8), sticky="ew")
+        el_card.grid(row=1, column=0, padx=5, pady=(0, 8), sticky="ew")
         el_card.grid_columnconfigure(0, weight=1)
         
         el_header = customtkinter.CTkFrame(el_card, fg_color="transparent")
@@ -3856,9 +3839,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         customtkinter.CTkButton(el_btns, text="+ Añadir", height=28, corner_radius=6, fg_color="#3b82f6", hover_color="#2563eb", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.editor_add_element).grid(row=0, column=0, padx=(0, 4), sticky="ew")
         customtkinter.CTkButton(el_btns, text="- Eliminar", height=28, corner_radius=6, fg_color="#EF4444", hover_color="#DC2626", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.editor_delete_element).grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
-        # 4. Tarjeta Propiedades del Elemento Seleccionado (2 Columnas - Compacto tipo Word)
+        # 3. Tarjeta Propiedades del Elemento Seleccionado (2 Columnas - Compacto tipo Word)
         self.el_prop_card = customtkinter.CTkFrame(inputs_editor, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
-        self.el_prop_card.grid(row=3, column=0, padx=5, pady=(0, 8), sticky="ew")
+        self.el_prop_card.grid(row=2, column=0, padx=5, pady=(0, 8), sticky="ew")
         self.el_prop_card.grid_columnconfigure(0, weight=1, uniform="prop_cols")
         self.el_prop_card.grid_columnconfigure(1, weight=1, uniform="prop_cols")
         
@@ -3953,12 +3936,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         self.editor_el_align_btn.grid(row=10, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="ew")
 
-        # 5. Guardar Plantilla
-        actions_editor = customtkinter.CTkFrame(self.tab_editor, fg_color="transparent")
-        actions_editor.grid(row=1, column=0, sticky="ew", pady=(5, 5))
-        actions_editor.grid_columnconfigure(0, weight=1)
-        customtkinter.CTkButton(actions_editor, text="Guardar Plantilla", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.guardar_plantilla_editor).grid(row=0, column=0, padx=0, sticky="ew")
-
         # Cargar primera plantilla si existe
         plantillas = obtener_lista_plantillas()
         if plantillas:
@@ -3971,6 +3948,84 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             if t["name"] == val:
                 self.cargar_plantilla_en_editor(t)
                 break
+
+    def abrir_ajustes_plantilla(self):
+        plantillas = obtener_lista_plantillas()
+        selected_temp_name = self.editor_template_var.get()
+        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
+        if not template:
+            messagebox.showerror("Error", "Selecciona una plantilla primero.")
+            return
+            
+        # Crear ventana modal
+        modal = customtkinter.CTkToplevel(self)
+        modal.title("Ajustes de Plantilla")
+        modal.geometry("320x220")
+        modal.resizable(False, False)
+        modal.transient(self)
+        modal.grab_set()
+        
+        # Centrar ventana modal respecto a la principal
+        modal.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() // 2) - (modal.winfo_width() // 2)
+        y = self.winfo_y() + (self.winfo_height() // 2) - (modal.winfo_height() // 2)
+        modal.geometry(f"+{x}+{y}")
+        
+        # Widgets de la modal
+        customtkinter.CTkLabel(modal, text="Ajustes de Plantilla", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), text_color="#06B6D4").pack(pady=(12, 10))
+        
+        f = customtkinter.CTkFrame(modal, fg_color="transparent")
+        f.pack(padx=20, fill="both", expand=True)
+        f.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(f, text="Nombre de la Plantilla", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        name_entry = customtkinter.CTkEntry(f, height=28, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", corner_radius=6)
+        name_entry.insert(0, template.get("name", ""))
+        name_entry.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, 8))
+        
+        customtkinter.CTkLabel(f, text="Ancho (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=0, sticky="w", pady=(2, 0))
+        w_entry = customtkinter.CTkEntry(f, height=28, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", corner_radius=6)
+        w_entry.insert(0, str(template.get("width_inches", 4.0)))
+        w_entry.grid(row=3, column=0, sticky="ew", padx=(0, 4), pady=(0, 8))
+        
+        customtkinter.CTkLabel(f, text="Alto (in)", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), text_color="#94A3B8").grid(row=2, column=1, sticky="w", pady=(2, 0))
+        h_entry = customtkinter.CTkEntry(f, height=28, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", corner_radius=6)
+        h_entry.insert(0, str(template.get("height_inches", 3.0)))
+        h_entry.grid(row=3, column=1, sticky="ew", padx=(4, 0), pady=(0, 8))
+        
+        def guardar_ajustes():
+            nuevo_nombre = name_entry.get().strip()
+            if not nuevo_nombre:
+                messagebox.showerror("Error", "El nombre no puede estar vacío.", parent=modal)
+                return
+                
+            nombre_anterior = template["name"]
+            if nuevo_nombre != nombre_anterior:
+                if any(t["name"].lower() == nuevo_nombre.lower() for t in plantillas):
+                    messagebox.showerror("Error", "Ya existe otra plantilla con el nombre ingresado.", parent=modal)
+                    return
+                eliminar_plantilla(nombre_anterior)
+                template["name"] = nuevo_nombre
+                
+            try: template["width_inches"] = float(w_entry.get())
+            except ValueError: template["width_inches"] = 4.0
+            
+            try: template["height_inches"] = float(h_entry.get())
+            except ValueError: template["height_inches"] = 3.0
+            
+            guardar_plantilla(template)
+            
+            # Recargar combobox y UI
+            nuevas_plantillas = obtener_lista_plantillas()
+            self.editor_template_combo.configure(values=[t["name"] for t in nuevas_plantillas])
+            self.editor_template_var.set(nuevo_nombre)
+            self.cargar_plantilla_en_editor(template)
+            self.actualizar_combos_plantillas_modos()
+            
+            modal.destroy()
+            messagebox.showinfo("Guardado", f"Ajustes de '{nuevo_nombre}' guardados con éxito.")
+            
+        customtkinter.CTkButton(modal, text="Guardar Ajustes", fg_color="#10B981", hover_color="#059669", height=32, corner_radius=8, font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), command=guardar_ajustes).pack(pady=(10, 15))
 
     def cargar_plantilla_en_editor(self, template):
         self.editor_temp_name_var.set(template.get("name", ""))
@@ -4237,43 +4292,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         self.cargar_plantilla_en_editor(template)
 
-    def guardar_plantilla_editor(self):
-        plantillas = obtener_lista_plantillas()
-        selected_temp_name = self.editor_template_var.get()
-        template = next((t for t in plantillas if t["name"] == selected_temp_name), None)
-        if not template:
-            return
-            
-        nuevo_nombre = self.editor_temp_name_var.get().strip()
-        if not nuevo_nombre:
-            messagebox.showerror("Error", "El nombre de la plantilla no puede estar vacío.")
-            return
-            
-        nombre_anterior = template["name"]
-        if nuevo_nombre != nombre_anterior:
-            if any(t["name"].lower() == nuevo_nombre.lower() for t in plantillas):
-                messagebox.showerror("Error", "Ya existe otra plantilla con el nombre ingresado.")
-                return
-            eliminar_plantilla(nombre_anterior)
-            template["name"] = nuevo_nombre
-            
-        try: template["width_inches"] = float(self.editor_temp_w_var.get())
-        except ValueError: template["width_inches"] = 4.0
-        
-        try: template["height_inches"] = float(self.editor_temp_h_var.get())
-        except ValueError: template["height_inches"] = 3.0
-        
-        self.guardar_cambios_elemento_actual_memoria()
-        
-        guardar_plantilla(template)
-        
-        nuevas_plantillas = obtener_lista_plantillas()
-        self.editor_template_combo.configure(values=[t["name"] for t in nuevas_plantillas])
-        self.editor_template_var.set(nuevo_nombre)
-        self.cargar_plantilla_en_editor(template)
-        self.actualizar_combos_plantillas_modos()
-        
-        messagebox.showinfo("Guardado", f"Plantilla '{nuevo_nombre}' guardada con éxito.")
 
     def on_editor_field_change(self, *args):
         if hasattr(self, '_updating_editor_fields') and self._updating_editor_fields:
