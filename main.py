@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.6.0"
+VERSION = "3.7.0"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -1593,6 +1593,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_barcode = self.tabview.add("Código de Barras")
         self.tab_qr = self.tabview.add("Código QR")
         self.tab_envio = self.tabview.add("Gestión de Destinatario")
+        self.tab_config = self.tabview.add("Configuración")
         self.tabview.set("Procesador")
         
         # Configure columns inside tabs
@@ -1600,6 +1601,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.tab_qr.grid_columnconfigure(0, weight=1)
         self.tab_procesador.grid_columnconfigure(0, weight=1)
         self.tab_envio.grid_columnconfigure(0, weight=1)
+        self.tab_config.grid_columnconfigure(0, weight=1)
 
         # ---------------- PESTAÑA CÓDIGO DE BARRAS ----------------
         inputs_barcode = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -1652,7 +1654,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_card_bc.grid_columnconfigure(0, weight=1)
         
         logo_header_bc = customtkinter.CTkFrame(logo_card_bc, fg_color="transparent")
-        logo_header_bc.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        logo_header_bc.grid(row=0, column=0, padx=12, pady=8, sticky="ew")
         logo_header_bc.grid_columnconfigure(0, weight=1)
         
         customtkinter.CTkLabel(logo_header_bc, text="Logo en Etiqueta", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
@@ -1669,13 +1671,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             command=self.al_cambiar_switch_logo
         )
         self.logo_switch_bc.grid(row=0, column=1, sticky="e")
-
-        logo_entry_frame_bc = customtkinter.CTkFrame(logo_card_bc, fg_color="transparent")
-        logo_entry_frame_bc.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
-        logo_entry_frame_bc.grid_columnconfigure(0, weight=1)
-        self.logo_entry_bc = customtkinter.CTkEntry(logo_entry_frame_bc, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
-        self.logo_entry_bc.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        customtkinter.CTkButton(logo_entry_frame_bc, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
 
         # Acciones Barcode
         actions_bc = customtkinter.CTkFrame(self.tab_barcode, fg_color="transparent")
@@ -1747,7 +1742,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_card_qr.grid_columnconfigure(0, weight=1)
 
         logo_header_qr = customtkinter.CTkFrame(logo_card_qr, fg_color="transparent")
-        logo_header_qr.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        logo_header_qr.grid(row=0, column=0, padx=12, pady=8, sticky="ew")
         logo_header_qr.grid_columnconfigure(0, weight=1)
 
         customtkinter.CTkLabel(logo_header_qr, text="Logo en Etiqueta", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
@@ -1764,13 +1759,6 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             command=self.al_cambiar_switch_logo
         )
         self.logo_switch_qr.grid(row=0, column=1, sticky="e")
-
-        logo_entry_frame_qr = customtkinter.CTkFrame(logo_card_qr, fg_color="transparent")
-        logo_entry_frame_qr.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
-        logo_entry_frame_qr.grid_columnconfigure(0, weight=1)
-        self.logo_entry_qr = customtkinter.CTkEntry(logo_entry_frame_qr, textvariable=self.logo_path_var, fg_color="#1E293B", border_color="#475569", text_color="#F8FAFC", height=32, corner_radius=8)
-        self.logo_entry_qr.grid(row=0, column=0, padx=(0, 8), sticky="ew")
-        customtkinter.CTkButton(logo_entry_frame_qr, text="Buscar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.buscar_logo).grid(row=0, column=1, padx=0)
 
         # Acciones QR
         actions_qr = customtkinter.CTkFrame(self.tab_qr, fg_color="transparent")
@@ -1869,61 +1857,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
 
         # 3. Contenedor Inferior (Configuración & Autor)
+        # 3. Contenedor Inferior (Autor)
         footer_container = customtkinter.CTkFrame(self.controls_frame, fg_color="transparent")
         footer_container.grid(row=2, column=0, padx=20, pady=(5, 15), sticky="sew")
         footer_container.grid_columnconfigure(0, weight=1)
-        
-        # Selector de Impresora
-        customtkinter.CTkLabel(
-            footer_container, 
-            text="Seleccionar Impresora", 
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), 
-            text_color="#94A3B8"
-        ).grid(row=0, column=0, sticky="w", pady=(0, 2))
-        
-        impresoras = obtener_lista_impresoras()
-        default_sys_printer = obtener_impresora_predeterminada()
-        saved_printer = cargar_impresora_config()
-        
-        # Validar si la impresora guardada sigue disponible, de lo contrario usar predeterminada
-        if saved_printer and saved_printer in impresoras:
-            active_printer = saved_printer
-        elif default_sys_printer:
-            active_printer = default_sys_printer
-        else:
-            active_printer = impresoras[0] if impresoras else "Impresora Predeterminada"
-            
-        self.printer_var = tk.StringVar(value=active_printer)
-        self.printer_combo = customtkinter.CTkComboBox(
-            footer_container,
-            values=impresoras if impresoras else ["Impresora Predeterminada"],
-            variable=self.printer_var,
-            fg_color="#1E293B",
-            border_color="#475569",
-            text_color="#F8FAFC",
-            button_color="#334155",
-            button_hover_color="#475569",
-            height=32,
-            corner_radius=8,
-            command=self.al_seleccionar_impresora
-        )
-        self.printer_combo.grid(row=1, column=0, sticky="ew", pady=(0, 10))
-        
-        # Botón Outline de SumatraPDF
-        self.config_sumatra_btn = customtkinter.CTkButton(
-            footer_container, 
-            text="Configurar SumatraPDF", 
-            fg_color="transparent",
-            border_width=1,
-            border_color="#475569",
-            hover_color="#334155",
-            text_color="#94A3B8",
-            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
-            height=32,
-            corner_radius=8,
-            command=self.configurar_ruta_sumatra_manualmente
-        )
-        self.config_sumatra_btn.grid(row=2, column=0, sticky="ew", pady=(0, 10))
         
         # Créditos
         customtkinter.CTkLabel(
@@ -1931,7 +1868,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             text="Hecho por Micael", 
             font=customtkinter.CTkFont(family="Inter", size=10, slant="italic"), 
             text_color="#64748B"
-        ).grid(row=3, column=0, sticky="w")
+        ).grid(row=0, column=0, sticky="w")
 
         # Frame de Vista Previa (Derecha)
         self.preview_frame.grid_rowconfigure(0, weight=1)
@@ -1972,6 +1909,87 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Grid inicial para el procesador (oculto)
         self.procesador_output_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         self.procesador_output_frame.grid_remove()
+
+        # Frame de Salida de Configuración (Derecha) - Oculto al inicio
+        self.config_output_frame = customtkinter.CTkFrame(self.preview_frame, fg_color="transparent")
+        self.config_output_frame.grid_rowconfigure(1, weight=1)
+        self.config_output_frame.grid_columnconfigure(0, weight=1)
+
+        cfg_header = customtkinter.CTkFrame(self.config_output_frame, fg_color="transparent")
+        cfg_header.grid(row=0, column=0, padx=15, pady=(15, 5), sticky="ew")
+        cfg_header.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            cfg_header,
+            text="⚙️ Ajustes del Sistema y Estado",
+            font=customtkinter.CTkFont(family="Inter", size=18, weight="bold"),
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, sticky="w")
+
+        info_card = customtkinter.CTkFrame(self.config_output_frame, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        info_card.grid(row=1, column=0, padx=15, pady=10, sticky="nsew")
+        info_card.grid_rowconfigure(0, weight=1)
+        info_card.grid_columnconfigure(0, weight=1)
+
+        info_scroll = customtkinter.CTkScrollableFrame(info_card, fg_color="transparent")
+        info_scroll.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
+        info_scroll.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            info_scroll,
+            text="Guía de Ajustes y Herramientas",
+            font=customtkinter.CTkFont(family="Inter", size=15, weight="bold"),
+            text_color="#F8FAFC",
+            anchor="w"
+        ).grid(row=0, column=0, padx=10, pady=(5, 12), sticky="w")
+
+        # Tarjeta 1: SumatraPDF
+        c1 = customtkinter.CTkFrame(info_scroll, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
+        c1.grid(row=1, column=0, padx=5, pady=(0, 10), sticky="ew")
+        c1.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            c1, text="📄 Impresión Directa (SumatraPDF)", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), text_color="#38BDF8", anchor="w"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+        customtkinter.CTkLabel(
+            c1, 
+            text="Permite la impresión silenciosa en segundo plano. Se detecta automáticamente en Windows o puedes seleccionar la ruta ejecutable manualmente en el panel izquierdo.",
+            font=customtkinter.CTkFont(family="Inter", size=11), text_color="#E2E8F0", justify="left", wraplength=420, anchor="w"
+        ).grid(row=1, column=0, padx=12, pady=(0, 10), sticky="w")
+
+        # Tarjeta 2: Impresora
+        c2 = customtkinter.CTkFrame(info_scroll, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
+        c2.grid(row=2, column=0, padx=5, pady=(0, 10), sticky="ew")
+        c2.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            c2, text="🖨️ Impresora Predeterminada", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), text_color="#38BDF8", anchor="w"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+        customtkinter.CTkLabel(
+            c2, 
+            text="Selecciona la impresora de destino. Si seleccionas 'Impresora Predeterminada', McTools usará la impresora por defecto de tu sistema Windows.",
+            font=customtkinter.CTkFont(family="Inter", size=11), text_color="#E2E8F0", justify="left", wraplength=420, anchor="w"
+        ).grid(row=1, column=0, padx=12, pady=(0, 10), sticky="w")
+
+        # Tarjeta 3: Logo
+        c3 = customtkinter.CTkFrame(info_scroll, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
+        c3.grid(row=3, column=0, padx=5, pady=(0, 10), sticky="ew")
+        c3.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            c3, text="🖼️ Logo de Etiquetas", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), text_color="#38BDF8", anchor="w"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+        customtkinter.CTkLabel(
+            c3, 
+            text="Especifica la ruta del archivo de imagen de tu logo (.png / .jpg). Luego puedes activarlo o desactivarlo fácilmente en las pestañas de Código de Barras y Código QR.",
+            font=customtkinter.CTkFont(family="Inter", size=11), text_color="#E2E8F0", justify="left", wraplength=420, anchor="w"
+        ).grid(row=1, column=0, padx=12, pady=(0, 10), sticky="w")
+
+        self.config_output_frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        self.config_output_frame.grid_remove()
 
         # ---------------- PESTAÑA ETIQUETA 2X4 (ENVÍO) ----------------
         inputs_envio = customtkinter.CTkFrame(self.tab_envio, fg_color="transparent")
@@ -2077,6 +2095,178 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         actions_envio.grid_columnconfigure(0, weight=1)
         customtkinter.CTkButton(actions_envio, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
 
+        # ---------------- PESTAÑA CONFIGURACIÓN ----------------
+        inputs_config = customtkinter.CTkFrame(self.tab_config, fg_color="transparent")
+        inputs_config.grid(row=0, column=0, sticky="ew")
+        inputs_config.grid_columnconfigure(0, weight=1)
+
+        # 1. Tarjeta SumatraPDF
+        sumatra_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        sumatra_card.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        sumatra_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            sumatra_card, 
+            text="⚙️ Impresión Directa (SumatraPDF)", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        customtkinter.CTkLabel(
+            sumatra_card,
+            text="Permite la impresión silenciosa e instantánea de etiquetas sin abrir diálogos.",
+            font=customtkinter.CTkFont(family="Inter", size=10),
+            text_color="#94A3B8",
+            justify="left",
+            wraplength=320
+        ).grid(row=1, column=0, padx=12, pady=(0, 8), sticky="w")
+
+        # Badge de estado
+        self.sumatra_status_badge = customtkinter.CTkLabel(
+            sumatra_card,
+            text=" SumatraPDF: Verificando... ",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            fg_color="#334155",
+            text_color="#F8FAFC",
+            corner_radius=6,
+            height=26
+        )
+        self.sumatra_status_badge.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="w")
+
+        # Ruta actual
+        self.sumatra_path_label = customtkinter.CTkLabel(
+            sumatra_card,
+            text="Ruta: Cargando...",
+            font=customtkinter.CTkFont(family="Inter", size=10),
+            text_color="#64748B",
+            justify="left",
+            wraplength=320
+        )
+        self.sumatra_path_label.grid(row=3, column=0, padx=12, pady=(0, 10), sticky="w")
+
+        # Botones de acción SumatraPDF
+        sumatra_btns_frame = customtkinter.CTkFrame(sumatra_card, fg_color="transparent")
+        sumatra_btns_frame.grid(row=4, column=0, padx=12, pady=(0, 12), sticky="ew")
+        sumatra_btns_frame.grid_columnconfigure((0, 1), weight=1)
+
+        customtkinter.CTkButton(
+            sumatra_btns_frame,
+            text="Seleccionar Ruta",
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.configurar_ruta_sumatra_manualmente
+        ).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+
+        customtkinter.CTkButton(
+            sumatra_btns_frame,
+            text="Buscar Auto.",
+            fg_color="#0F766E",
+            hover_color="#115E59",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8,
+            command=self.redetectar_sumatra
+        ).grid(row=0, column=1, padx=(4, 0), sticky="ew")
+
+        # 2. Tarjeta Impresora Predeterminada
+        printer_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        printer_card.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        printer_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            printer_card, 
+            text="🖨️ Selección de Impresora", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        impresoras = obtener_lista_impresoras()
+        default_sys_printer = obtener_impresora_predeterminada()
+        saved_printer = cargar_impresora_config()
+
+        if saved_printer and saved_printer in impresoras:
+            active_printer = saved_printer
+        elif default_sys_printer:
+            active_printer = default_sys_printer
+        else:
+            active_printer = impresoras[0] if impresoras else "Impresora Predeterminada"
+
+        self.printer_var = tk.StringVar(value=active_printer)
+        self.printer_combo = customtkinter.CTkComboBox(
+            printer_card,
+            values=impresoras if impresoras else ["Impresora Predeterminada"],
+            variable=self.printer_var,
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            height=32,
+            corner_radius=8,
+            command=self.al_seleccionar_impresora
+        )
+        self.printer_combo.grid(row=1, column=0, padx=12, pady=(0, 12), sticky="ew")
+
+        # 3. Tarjeta Logo de Etiquetas
+        logo_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        logo_card.grid(row=2, column=0, sticky="ew", pady=(0, 10))
+        logo_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            logo_card, 
+            text="🖼️ Logo en Etiquetas", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        # Checkbox activar/desactivar logo
+        self.logo_switch = customtkinter.CTkSwitch(
+            logo_card,
+            text="Incluir logo en etiquetas",
+            variable=self.logo_enabled_var,
+            onvalue=True,
+            offvalue=False,
+            command=self.on_toggle_logo,
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            text_color="#F8FAFC",
+            progress_color="#06B6D4"
+        )
+        self.logo_switch.grid(row=1, column=0, padx=12, pady=(4, 8), sticky="w")
+
+        logo_entry_frame = customtkinter.CTkFrame(logo_card, fg_color="transparent")
+        logo_entry_frame.grid(row=2, column=0, padx=12, pady=(0, 12), sticky="ew")
+        logo_entry_frame.grid_columnconfigure(0, weight=1)
+
+        self.logo_path_entry = customtkinter.CTkEntry(
+            logo_entry_frame,
+            textvariable=self.logo_path_var,
+            placeholder_text="logo.png",
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            height=32,
+            corner_radius=8
+        )
+        self.logo_path_entry.grid(row=0, column=0, padx=(0, 6), sticky="ew")
+
+        customtkinter.CTkButton(
+            logo_entry_frame,
+            text="Buscar Logo",
+            width=90,
+            height=32,
+            corner_radius=8,
+            fg_color="#334155",
+            hover_color="#475569",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            command=self.buscar_logo
+        ).grid(row=0, column=1)
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
@@ -2095,8 +2285,14 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.proc_input_textbox.bind("<Button-1>", self.on_proc_click)
         self.proc_input_textbox.bind("<FocusIn>", self.on_proc_focus_in)
         
-        # Actualizar cuando cambie la pestaña activa
-        self.tabview.configure(command=self.schedule_preview_update)
+        # Actualizar inmediatamente cuando cambie la pestaña activa (sin retardo/parpadeo)
+        self.tabview.configure(command=self.on_tab_change)
+
+    def on_tab_change(self, *args):
+        if self._preview_update_job:
+            self.after_cancel(self._preview_update_job)
+            self._preview_update_job = None
+        self.force_preview_update()
 
     def schedule_preview_update(self, *args):
         if self._preview_update_job: self.after_cancel(self._preview_update_job)
@@ -2107,13 +2303,22 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             tab_activa = self.tabview.get()
             
             if tab_activa == "Procesador":
-                # Conmutar paneles: Ocultar previsualización y mostrar el procesador
+                # Conmutar paneles: Ocultar previsualización y configuración, mostrar el procesador
                 self.preview_image_label.grid_remove()
+                if hasattr(self, 'config_output_frame'): self.config_output_frame.grid_remove()
                 self.procesador_output_frame.grid()
                 return
-            else:
-                # Conmutar paneles: Ocultar procesador y mostrar previsualización
+            elif tab_activa == "Configuración":
+                # Conmutar paneles: Ocultar previsualización y procesador, mostrar configuración
+                self.preview_image_label.grid_remove()
                 self.procesador_output_frame.grid_remove()
+                if hasattr(self, 'config_output_frame'): self.config_output_frame.grid()
+                self.actualizar_estado_sumatra_ui()
+                return
+            else:
+                # Conmutar paneles: Ocultar procesador y configuración, mostrar previsualización
+                self.procesador_output_frame.grid_remove()
+                if hasattr(self, 'config_output_frame'): self.config_output_frame.grid_remove()
                 self.preview_image_label.grid()
             
             # Asegurarnos de que el logo esté cargado en caché
@@ -2858,21 +3063,61 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             guardar_logo_config(filepath)  # Guardar la ruta del logo seleccionado
 
     def actualizar_estado_sumatra_ui(self):
-        """Actualiza el texto y apariencia del botón de SumatraPDF según su disponibilidad."""
+        """Actualiza el texto y apariencia de los elementos de SumatraPDF según su disponibilidad."""
+        global SUMATRA_PDF_PATH
         if es_sumatra_configurado():
-            self.config_sumatra_btn.configure(
-                text="SumatraPDF: Detectado ✓",
-                border_color="#10B981",
-                text_color="#34D399",
-                hover_color="#064E3B"
-            )
+            if hasattr(self, 'config_sumatra_btn'):
+                self.config_sumatra_btn.configure(
+                    text="SumatraPDF: Detectado ✓",
+                    border_color="#10B981",
+                    text_color="#34D399",
+                    hover_color="#064E3B"
+                )
+            if hasattr(self, 'sumatra_status_badge'):
+                self.sumatra_status_badge.configure(
+                    text=" SumatraPDF: Detectado ✓ ",
+                    fg_color="#064E3B",
+                    text_color="#34D399"
+                )
+            if hasattr(self, 'sumatra_path_label'):
+                self.sumatra_path_label.configure(
+                    text=f"Ruta: {SUMATRA_PDF_PATH}",
+                    text_color="#94A3B8"
+                )
         else:
-            self.config_sumatra_btn.configure(
-                text="SumatraPDF: No Detectado ⚠️",
-                border_color="#F59E0B",
-                text_color="#FBBF24",
-                hover_color="#78350F"
-            )
+            if hasattr(self, 'config_sumatra_btn'):
+                self.config_sumatra_btn.configure(
+                    text="SumatraPDF: No Detectado ⚠️",
+                    border_color="#F59E0B",
+                    text_color="#FBBF24",
+                    hover_color="#78350F"
+                )
+            if hasattr(self, 'sumatra_status_badge'):
+                self.sumatra_status_badge.configure(
+                    text=" SumatraPDF: No Detectado ⚠️ ",
+                    fg_color="#78350F",
+                    text_color="#FBBF24"
+                )
+            if hasattr(self, 'sumatra_path_label'):
+                self.sumatra_path_label.configure(
+                    text="Ruta: No configurada / No encontrada",
+                    text_color="#F87171"
+                )
+
+    def redetectar_sumatra(self):
+        global SUMATRA_PDF_PATH
+        SUMATRA_PDF_PATH = None
+        detectado = detectar_sumatra_si_no_configurado()
+        self.actualizar_estado_sumatra_ui()
+        if detectado:
+            messagebox.showinfo("SumatraPDF Detectado", f"SumatraPDF ha sido detectado exitosamente en:\n{detectado}")
+        else:
+            messagebox.showwarning("No Encontrado", "No se encontró SumatraPDF automáticamente en el sistema.")
+
+    def on_toggle_logo(self):
+        guardar_logo_enabled_config(self.logo_enabled_var.get())
+        self.cargar_y_cachear_logo()
+        self.schedule_preview_update()
 
     def configurar_ruta_sumatra_manualmente(self):
         global SUMATRA_PDF_PATH
