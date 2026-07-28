@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.7.0"
+VERSION = "3.7.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -309,6 +309,17 @@ def guardar_impresora_config(printer_name):
     """Guarda el nombre de la impresora en la configuración."""
     config = _read_config()
     config["printer_name"] = printer_name
+    _write_config(config)
+
+def cargar_tema_config():
+    """Carga el tema visual guardado en la configuración ('Oscuro', 'Claro', 'Sistema')."""
+    config = _read_config()
+    return config.get("appearance_mode", "Oscuro")
+
+def guardar_tema_config(modo):
+    """Guarda el tema visual en el archivo de configuración."""
+    config = _read_config()
+    config["appearance_mode"] = modo
     _write_config(config)
 
 def guardar_config_sumatra():
@@ -2267,6 +2278,38 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             command=self.buscar_logo
         ).grid(row=0, column=1)
 
+        # 4. Tarjeta Tema Visual
+        theme_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        theme_card.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        theme_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            theme_card, 
+            text="🎨 Tema Visual de la Aplicación", 
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), 
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        tema_actual = cargar_tema_config()
+        self.theme_var = tk.StringVar(value=tema_actual)
+
+        self.theme_segmented = customtkinter.CTkSegmentedButton(
+            theme_card,
+            values=["Oscuro", "Claro", "Sistema"],
+            variable=self.theme_var,
+            command=self.al_cambiar_tema_visual,
+            fg_color="#1E293B",
+            selected_color="#06B6D4",
+            selected_hover_color="#0891B2",
+            unselected_color="#1E293B",
+            unselected_hover_color="#334155",
+            text_color="#F8FAFC",
+            font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"),
+            height=32,
+            corner_radius=8
+        )
+        self.theme_segmented.grid(row=1, column=0, padx=12, pady=(4, 12), sticky="ew")
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
@@ -3056,6 +3099,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         """Callback al seleccionar una impresora de la lista."""
         guardar_impresora_config(valor)
 
+    def al_cambiar_tema_visual(self, valor):
+        """Callback al seleccionar un tema visual (Oscuro, Claro, Sistema)."""
+        guardar_tema_config(valor)
+        modo_ctk = "dark" if valor == "Oscuro" else ("light" if valor == "Claro" else "system")
+        customtkinter.set_appearance_mode(modo_ctk)
+
     def buscar_logo(self):
         filepath = filedialog.askopenfilename(title="Seleccionar archivo de logo", filetypes=[("Archivos de Imagen", "*.png *.jpg *.jpeg"), ("Todos los archivos", "*.*")])
         if filepath:
@@ -3466,7 +3515,9 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
 
 if __name__ == "__main__":
-    customtkinter.set_appearance_mode("dark")
+    modo_guardado = cargar_tema_config()
+    modo_ctk = "dark" if modo_guardado == "Oscuro" else ("light" if modo_guardado == "Claro" else "system")
+    customtkinter.set_appearance_mode(modo_ctk)
     customtkinter.set_default_color_theme("blue")
     
     app = AppGeneradorEtiquetas()
