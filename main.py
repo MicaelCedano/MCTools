@@ -38,6 +38,7 @@ import threading
 import sys
 import time
 import webbrowser
+import datetime
 
 # --- Dependencias para Guardado/Impresión en PDF ---
 PDF_SAVE_ENABLED = False
@@ -126,7 +127,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.7.3"
+VERSION = "3.8.0"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -300,6 +301,17 @@ def guardar_logo_enabled_config(enabled):
     config["logo_enabled"] = bool(enabled)
     _write_config(config)
 
+def cargar_fecha_enabled_config():
+    """Carga la preferencia de incluir fecha en las etiquetas."""
+    config = _read_config()
+    return config.get("fecha_enabled", True)
+
+def guardar_fecha_enabled_config(enabled):
+    """Guarda la preferencia de incluir fecha en las etiquetas."""
+    config = _read_config()
+    config["fecha_enabled"] = bool(enabled)
+    _write_config(config)
+
 def cargar_impresora_config():
     """Carga el nombre de la impresora guardada en la configuración."""
     config = _read_config()
@@ -433,6 +445,12 @@ def cargar_fuentes_pdf():
 
 # --- FUNCIÓN DE PREVISUALIZACIÓN ---
 # --- FUNCIÓN DE PREVISUALIZACIÓN (CÓDIGO DE BARRAS) ---
+def obtener_texto_fecha():
+    """Retorna la fecha formateada para etiquetas, o vacío si está deshabilitada."""
+    if cargar_fecha_enabled_config():
+        return datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    return ""
+
 def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, logo_pil_image):
     """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
     DPI = 300
@@ -520,6 +538,14 @@ def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, lo
 
             sn_x = (LABEL_WIDTH_PX - sn_text_w) // 2
             draw.text((sn_x, current_y), numero_serie, fill="black", font=sn_font)
+            
+            # Fecha en la parte inferior (si está habilitada)
+            fecha_texto = obtener_texto_fecha()
+            if fecha_texto:
+                fecha_font = obtener_fuente_pil(FONT_REGULAR_PATH_TTF, int(7 * DPI / 72))
+                resto_y = LABEL_HEIGHT_PX - current_y - barcode_pil.height
+                fecha_y = LABEL_HEIGHT_PX - BOTTOM_MARGIN_PX + int(0.05 * DPI)
+                draw.text((SIDE_MARGIN_PX, fecha_y), fecha_texto, fill="gray", font=fecha_font)
         except Exception as e:
             print(f"Error generando código de barras en previsualización: {e}")
             
@@ -623,6 +649,14 @@ def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion,
             current_y -= sn_font_size
             c.setFont(RL_FONT_REGULAR_NAME, sn_font_size)
             c.drawCentredString(width / 2, current_y, numero_serie)
+            
+            # Fecha en esquina inferior izquierda (si habilitada)
+            fecha_texto = obtener_texto_fecha()
+            if fecha_texto:
+                c.setFont(RL_FONT_REGULAR_NAME, 6)
+                c.setFillColorRGB(0.5, 0.5, 0.5)
+                c.drawString(margin_sides + 2, margin_bottom - 2, fecha_texto)
+                c.setFillColorRGB(0, 0, 0)
 
         except Exception as e:
             print(f"Error generando código de barras para PDF: {e}")
@@ -747,6 +781,15 @@ def _generar_etiqueta_qr_pil_image(modelo, imeis, logo_pil_image):
         except Exception as e:
             print(f"Error generando código QR en previsualización: {e}")
             
+    # Fecha en la parte inferior (si está habilitada) - PIL
+    fecha_texto = obtener_texto_fecha()
+    if fecha_texto:
+        try:
+            fecha_font = ImageFont.truetype(FONT_REGULAR_PATH_TTF, size=int(7 * DPI / 72))
+        except IOError:
+            fecha_font = ImageFont.load_default()
+        draw.text((SIDE_MARGIN_PX, LABEL_HEIGHT_PX - BOTTOM_MARGIN_PX + int(0.05 * DPI)), fecha_texto, fill="gray", font=fecha_font)
+
     return image
 
 # --- FUNCIÓN DE GENERACIÓN DE PDF (CÓDIGO QR) ---
@@ -863,6 +906,14 @@ def _generar_etiqueta_qr_pdf_temporal(modelo, imeis, path_logo_pil):
         except Exception as e:
             print(f"Error generando código QR para PDF: {e}")
             
+    # Fecha en esquina inferior izquierda (si habilitada)
+    fecha_texto = obtener_texto_fecha()
+    if fecha_texto:
+        c.setFont(RL_FONT_REGULAR_NAME, 6)
+        c.setFillColorRGB(0.5, 0.5, 0.5)
+        c.drawString(margin_sides + 2, margin_bottom - 2, fecha_texto)
+        c.setFillColorRGB(0, 0, 0)
+
     c.save()
     return temp_pdf_path
 
@@ -2268,6 +2319,32 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             command=self.buscar_logo
         ).grid(row=0, column=1)
 
+        # 4. Tarjeta Fecha/Hora en Etiquetas
+        fecha_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        fecha_card.grid(row=3, column=0, sticky="ew", pady=(0, 10))
+        fecha_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            fecha_card,
+            text="📅 Fecha en Etiquetas",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        self.fecha_enabled_var = tk.BooleanVar(value=cargar_fecha_enabled_config())
+        self.fecha_switch = customtkinter.CTkSwitch(
+            fecha_card,
+            text="Incluir fecha en etiquetas impresas",
+            variable=self.fecha_enabled_var,
+            onvalue=True,
+            offvalue=False,
+            command=self.on_toggle_fecha,
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            text_color="#F8FAFC",
+            progress_color="#06B6D4"
+        )
+        self.fecha_switch.grid(row=1, column=0, padx=12, pady=(4, 12), sticky="w")
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
@@ -2288,6 +2365,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Actualizar inmediatamente cuando cambie la pestaña activa (sin retardo/parpadeo)
         self.tabview.configure(command=self.on_tab_change)
+
+        # Ctrl+P: imprimir desde cualquier pestaña
+        self.bind_all("<Control-p>", lambda e: self.imprimir())
+        self.bind_all("<Control-P>", lambda e: self.imprimir())
 
     def on_tab_change(self, *args):
         if self._preview_update_job:
@@ -3128,6 +3209,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def on_toggle_logo(self):
         guardar_logo_enabled_config(self.logo_enabled_var.get())
         self.cargar_y_cachear_logo()
+        self.schedule_preview_update()
+
+    def on_toggle_fecha(self):
+        guardar_fecha_enabled_config(self.fecha_enabled_var.get())
         self.schedule_preview_update()
 
     def configurar_ruta_sumatra_manualmente(self):

@@ -34,6 +34,63 @@ hiddenimports = [
     'win32con',
 ]
 
+# Excluir módulos que inflan el .exe sin ser necesarios
+# numpy: arrastra ~15MB, PIL no lo necesita para formatos comunes
+# lxml: reportlab lo llama solo si está instalado, pero no se usa en runtime
+# pygments: reportlab lo referencia para syntax highlight, no usado
+# setuptools/pkg_resources: solo para detección de paquetes en desarrollo
+# tests/docs de qrcode y reportlab: metadata instalada, no ejecutable
+EXCLUDES = [
+    'numpy',
+    'lxml',
+    'pygments',
+    'setuptools',
+    'pkg_resources',
+    'pip',
+    'tkinter.test',
+    'tkinter.tix',
+    'unittest',
+    'distutils',
+    'qrcode.tests',
+    'PIL.GifImagePlugin',      # formatos de imagen no usados
+    'PIL.FpxImagePlugin',
+    'PIL.MpegImagePlugin',
+    'PIL.PcdImagePlugin',
+    'PIL.PixarImagePlugin',
+    'PIL.PsdImagePlugin',
+    'PIL.SgiImagePlugin',
+    'PIL.SunImagePlugin',
+    'PIL.WalImageFile',
+    'PIL.XbmImagePlugin',
+    'PIL.XpmImagePlugin',
+    'PIL.BufrStubImagePlugin',
+    'PIL.FitsStubImagePlugin',
+    'PIL.GribStubImagePlugin',
+    'PIL.Hdf5StubImagePlugin',
+    'PIL.McIdasImagePlugin',
+    'PIL.MicImagePlugin',
+    'PIL.FtexImagePlugin',
+    'PIL.BlpImagePlugin',
+    'PIL.ImImagePlugin',
+    'PIL.ImtImagePlugin',
+    'PIL.IptcImagePlugin',
+    'PIL.MspImagePlugin',
+    'PIL.PalmImagePlugin',
+    'PIL.PcdImagePlugin',
+    'PIL.QoiImagePlugin',
+    'PIL.TgaImagePlugin',
+    'PIL.WmfImagePlugin',
+    'PIL.XVThumbImagePlugin',
+    'PIL.CurImagePlugin',
+    'PIL.DcxImagePlugin',
+    'PIL.DdsImagePlugin',
+    'PIL.FliImagePlugin',
+    'PIL.GbrImagePlugin',
+    'PIL.GdImageFile',
+    'PIL.IcnsImagePlugin',
+    'PIL.IcoImagePlugin',
+]
+
 # Incluir carpeta completa de customtkinter (assets, themes, fonts, json, etc)
 ctk_path = os.path.dirname(customtkinter.__file__)
 datas.append((ctk_path, 'customtkinter'))
@@ -62,7 +119,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=EXCLUDES,
     noarchive=False,
     optimize=0,
 )

@@ -1,0 +1,11 @@
+# McTools - Dependencias principales
+customtkinter>=5.2.0
+pillow>=10.0.0
+python-barcode>=0.15.0
+qrcode>=7.4.0
+reportlab>=4.0.0
+pywin32>=306
+pyperclip>=1.8.0
+
+# Opcional: previsualización de PDF en Etiqueta 2x4
+# PyMuPDF>=1.23.0
