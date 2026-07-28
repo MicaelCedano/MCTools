@@ -268,7 +268,7 @@ def _generar_etiqueta_pil_image(modelo, imeis, path_logo_pil):
             altura_texto = bbox[3] - bbox[1]  # altura real del texto
             # Ajustar current_y para que el texto tenga espacio arriba
             current_y += int(0.1 * DPI)  # Espacio adicional antes del texto
-        except:
+        except Exception:
             altura_texto = texto_font.size
             current_y += int(0.1 * DPI)
         

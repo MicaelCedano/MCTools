@@ -309,8 +309,23 @@ class IMEIProcessorApp:
 
 
     def extract_imeis(self, text_data: str, omit_alternates: bool) -> List[str]:
+        # Paso 1: Intentar regex estricto primero (IMEIs de 15 dígitos con word boundaries)
         imei_pattern = r'\b\d{15}\b'
         all_imeis_found = re.findall(imei_pattern, text_data)
+
+        # Paso 2: Si no encontró nada, sanitizar la entrada quitando caracteres no numéricos
+        # Esto cubre IMEIs con espacios o guiones (e.g. "12345 67890 12345" o "12345-67890-12345")
+        if not all_imeis_found:
+            # Limpiar cada línea: quitar todo lo que no sea dígito o whitespace
+            lines_cleaned = []
+            for line in text_data.splitlines():
+                tokens = line.split()
+                for token in tokens:
+                    cleaned = "".join(c for c in token if c.isdigit())
+                    if len(cleaned) == 15:
+                        lines_cleaned.append(cleaned)
+            if lines_cleaned:
+                all_imeis_found = lines_cleaned
 
         processed_imeis = []
         if omit_alternates:

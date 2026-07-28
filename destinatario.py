@@ -529,7 +529,7 @@ class LabelApp(ctk.CTk):
             print(f"Error dibujando etiqueta: {e}") 
             if is_final_pdf:
                 try: c.save() 
-                except: pass
+                except Exception: pass
             raise
 
     def _create_temp_file_for_qr(self, data: str, prefix: str) -> Optional[str]:

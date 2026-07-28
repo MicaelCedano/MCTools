@@ -126,7 +126,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.7.2"
+VERSION = "3.7.3"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -692,7 +692,7 @@ def _generar_etiqueta_qr_pil_image(modelo, imeis, logo_pil_image):
             bbox = draw.textbbox((0, 0), texto_modelo, font=texto_font)
             altura_texto = bbox[3] - bbox[1]
             current_y += int(0.1 * DPI)
-        except:
+        except Exception:
             altura_texto = texto_font.size
             current_y += int(0.1 * DPI)
         
@@ -992,7 +992,7 @@ def _dibujar_etiqueta_2x4_canvas(c, nombre_destinatario_data, origen_data, desti
             c.setFont(ETIQUETA_FONT_QR_HELPER, ETIQUETA_FONT_QR_HELP_SIZE)
             c.drawCentredString(LABEL_WIDTH_PT / 2, y_qr - 10, "Escanear para ver envío")
             try: os.remove(qr_path)
-            except: pass
+            except OSError: pass
 
 def _generar_etiqueta_2x4_pdf_temporal(destinatario, origen, destino, cantidad=1):
     if not PDF_SAVE_ENABLED: return None
@@ -1263,6 +1263,7 @@ class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
         self.geometry("450x190")
         self.resizable(False, False)
         self.configure(fg_color="#0F172A")
+        self.version_nueva = version_nueva  # Guardar para usar en actualizar_progreso
         
         # Centrar la ventana de progreso respecto al padre
         self.transient(parent)
@@ -1291,7 +1292,7 @@ class VentanaProgresoActualizacion(customtkinter.CTkToplevel):
         
     def actualizar_progreso(self, valor, porcentaje, texto_status):
         self.progress_bar.set(valor)
-        self.percent_label.configure(text=f"⚡ Descargando v3.3.12 ({porcentaje}%)")
+        self.percent_label.configure(text=f"⚡ Descargando v{self.version_nueva} ({porcentaje}%)")
         self.status_label.configure(text=texto_status)
 
 class IMEIHistoryWindow(customtkinter.CTkToplevel):
@@ -2742,6 +2743,16 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         # Encontrar todos los IMEIs de 15 dígitos con expresión regular
         imei_pattern = r'\b\d{15}\b'
         todos_los_imeis = re.findall(imei_pattern, texto_crudo)
+
+        # Fallback: si no encontró nada, sanitizar tokens no numéricos
+        # Cubre IMEIs con espacios o guiones (e.g. "12345 67890 12345")
+        if not todos_los_imeis:
+            for line in texto_crudo.splitlines():
+                tokens = line.split()
+                for token in tokens:
+                    cleaned = "".join(c for c in token if c.isdigit())
+                    if len(cleaned) == 15:
+                        todos_los_imeis.append(cleaned)
 
         # Aplicar filtro de posiciones pares (omitir impares en base 1-indexada, es decir indices 1, 3, 5 en 0-indexada)
         imeis_filtrados = []
