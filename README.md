@@ -36,13 +36,15 @@
 
 ```text
 MCTools Dev/
-├── etiqueta_iphone_2025.py        # Código fuente principal de la aplicación GUI (v3.4.2)
-├── generar_qr_imeis (1).py        # Módulo/script alternativo para generación de etiquetas QR
-├── procesador imeis yacelltech.py # Herramienta auxiliar de procesamiento e historial de IMEIs
-├── etiqueta_config.json           # Archivo de configuración local y almacenamiento de historial
-├── McTools.spec                   # Archivo de especificación de PyInstaller para compilar .exe
-├── logo.ico                       # Icono oficial de la aplicación
-└── logo.png                       # Imagen de logotipo corporativo por defecto
+├── main.py               # Código fuente principal de la aplicación GUI (Etiquetas & IMEIs)
+├── destinatario.py       # Módulo para generación de etiquetas de envío 2x4 y destinatarios
+├── qr.py                 # Módulo/script para generación de etiquetas QR
+├── procesador_de_imei.py # Herramienta de procesamiento e historial de IMEIs
+├── updater.py            # Módulo de actualización automática
+├── etiqueta_config.json  # Archivo de configuración local y almacenamiento de historial
+├── McTools.spec          # Archivo de especificación de PyInstaller para compilar .exe
+├── logo.ico              # Icono oficial de la aplicación
+└── logo.png              # Imagen de logotipo corporativo por defecto
 ```
 
 ---
@@ -67,7 +69,7 @@ pip install customtkinter pillow python-barcode qrcode reportlab pywin32 pypercl
 Para iniciar la aplicación en modo desarrollo:
 
 ```bash
-python etiqueta_iphone_2025.py
+python main.py
 ```
 
 ### Compilar a Ejecutable (.exe)
