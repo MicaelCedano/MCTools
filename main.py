@@ -127,7 +127,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.8.0"
+VERSION = "3.8.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -3363,7 +3363,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     # Iniciar descarga inline directamente (sin popup)
                     self.after(100, lambda: self.iniciar_descarga_inline(exe_url, latest_version_tag))
                 else:
-                    self.after(100, lambda: self.btn_update.configure(text="¡Nueva v" + latest_version + "!", fg_color="#EF4444", state="normal"))
+                    self.after(100, lambda v=latest_version, t=latest_version_tag: self._mostrar_update_disponible(v, t))
             else:
                 self.after(100, lambda: self.btn_update.configure(text="Al día", fg_color="#10B981", state="normal"))
                 if manual:
@@ -3375,6 +3375,17 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.after(200, lambda: messagebox.showerror("Error", f"No se pudo buscar actualizaciones:\n{e}"))
         finally:
             self.after(900000, lambda: self.chequear_actualizaciones_async(manual=False))
+
+    def _mostrar_update_disponible(self, version, tag):
+        """Muestra notificación de actualización disponible (modo dev o si falla descarga automática)."""
+        self.btn_update.configure(text=f"¡Nueva v{version}!", fg_color="#EF4444", state="normal")
+        messagebox.showinfo(
+            "Actualización Disponible",
+            f"McTools v{version} está disponible.\n\n"
+            f"Tu versión actual: v{VERSION}\n\n"
+            "Visita GitHub para descargar la nueva versión:\n"
+            f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/tag/{tag}"
+        )
 
     def iniciar_descarga_inline(self, exe_url, nueva_version_tag):
         """Inicia la descarga de la nueva versión mostrando la barra de progreso inline."""
@@ -3399,9 +3410,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
             )
             
-            with urllib.request.urlopen(req, timeout=45) as response:
+            with urllib.request.urlopen(req, timeout=300) as response:
                 total_size = int(response.info().get('Content-Length', 0))
+                total_size_mb = total_size / (1024 * 1024)
                 bytes_downloaded = 0
+                
+                self.after(0, lambda s=total_size_mb: self.status_bar.configure(text=f"Descargando ~{s:.0f} MB desde GitHub..."))
                 
                 with open(new_exe, 'wb') as f:
                     while True:
@@ -3442,6 +3456,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def _error_descarga_inline(self):
         self.update_progress.grid_remove()
         self.btn_update.configure(text="Buscar act.", fg_color="#334155", state="normal")
+        messagebox.showerror(
+            "Error de Descarga",
+            "No se pudo descargar la actualización. Verifica tu conexión a internet e intenta de nuevo."
+        )
 
     def al_cerrar_aplicacion(self):
         """Intercepta el cierre de la aplicación. Si hay una actualización lista, la aplica automáticamente al salir."""
