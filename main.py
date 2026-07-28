@@ -1493,6 +1493,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.preview_ctk_image = None
         self._preview_update_job = None
         self.cached_logo_pil = None
+        self._preview_cache = {"barcode": None, "qr": None, "envio": None}  # Cache de previsualizaciones
         
         # Configuración Inicial y de Icono (Ventana y Barra de Tareas)
         self.title(f"McTools v{VERSION}")
@@ -2378,6 +2379,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
 
     def schedule_preview_update(self, *args):
         if self._preview_update_job: self.after_cancel(self._preview_update_job)
+        # Invalidar cache al cambiar inputs para regenerar preview
+        self._preview_cache = {"barcode": None, "qr": None, "envio": None}
         self._preview_update_job = self.after(50, self.force_preview_update)
 
     def force_preview_update(self):
@@ -2385,49 +2388,61 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             tab_activa = self.tabview.get()
             
             if tab_activa == "Procesador":
-                # Conmutar paneles: Ocultar previsualización y configuración, mostrar el procesador
+                # Mostrar procesador sin ocultar primero (evita parpadeo)
+                self.procesador_output_frame.grid()
                 self.preview_image_label.grid_remove()
                 if hasattr(self, 'config_output_frame'): self.config_output_frame.grid_remove()
-                self.procesador_output_frame.grid()
                 return
             elif tab_activa == "Configuración":
-                # Conmutar paneles: Ocultar previsualización y procesador, mostrar configuración
+                # Mostrar configuración sin ocultar primero
+                if hasattr(self, 'config_output_frame'): self.config_output_frame.grid()
                 self.preview_image_label.grid_remove()
                 self.procesador_output_frame.grid_remove()
-                if hasattr(self, 'config_output_frame'): self.config_output_frame.grid()
                 self.actualizar_estado_sumatra_ui()
                 return
             else:
-                # Conmutar paneles: Ocultar procesador y configuración, mostrar previsualización
+                # Mostrar preview sin ocultar primero
+                self.preview_image_label.grid()
                 self.procesador_output_frame.grid_remove()
                 if hasattr(self, 'config_output_frame'): self.config_output_frame.grid_remove()
-                self.preview_image_label.grid()
             
             # Asegurarnos de que el logo esté cargado en caché
             if self.cached_logo_pil is None and self.logo_path_var.get().strip():
                 self.cargar_y_cachear_logo()
             
+            # Cache key según pestaña
+            cache_key = {"Código de Barras": "barcode", "Gestión de Destinatario": "envio", "Código QR": "qr"}.get(tab_activa)
+            
             if tab_activa == "Código de Barras":
-                pil_image = _generar_etiqueta_barcode_pil_image(
-                    self.modelo_var.get().strip().upper(),
-                    self.imei_var.get().strip().upper(),
-                    "",
-                    self.cached_logo_pil
-                )
+                pil_image = self._preview_cache.get("barcode")
+                if pil_image is None:
+                    pil_image = _generar_etiqueta_barcode_pil_image(
+                        self.modelo_var.get().strip().upper(),
+                        self.imei_var.get().strip().upper(),
+                        "",
+                        self.cached_logo_pil
+                    )
+                    self._preview_cache["barcode"] = pil_image
             elif tab_activa == "Gestión de Destinatario":
-                pil_image = _generar_etiqueta_2x4_pil_image(
-                    self.envio_destinatario_var.get(),
-                    self.envio_origen_var.get(),
-                    self.envio_destino_var.get()
-                )
+                pil_image = self._preview_cache.get("envio")
+                if pil_image is None:
+                    pil_image = _generar_etiqueta_2x4_pil_image(
+                        self.envio_destinatario_var.get(),
+                        self.envio_origen_var.get(),
+                        self.envio_destino_var.get()
+                    )
+                    self._preview_cache["envio"] = pil_image
             else:  # Código QR
-                imeis = self.obtener_imeis_del_texto()
-                self.actualizar_contador_imeis()
-                pil_image = _generar_etiqueta_qr_pil_image(
-                    self.modelo_var.get().strip().upper(),
-                    imeis,
-                    self.cached_logo_pil
-                )
+                pil_image = self._preview_cache.get("qr")
+                if pil_image is None:
+                    imeis = self.obtener_imeis_del_texto()
+                    self.actualizar_contador_imeis()
+                    pil_image = _generar_etiqueta_qr_pil_image(
+                        self.modelo_var.get().strip().upper(),
+                        imeis,
+                        self.cached_logo_pil
+                    )
+                    self._preview_cache["qr"] = pil_image
                 
             self.preview_ctk_image = pil_to_tk_image_safe(
                 pil_image,
@@ -2437,6 +2452,14 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.preview_image_label.configure(image=self.preview_ctk_image, text="")
         except Exception as e:
             self.preview_image_label.configure(image=None, text=f"Error en preview:\n{e}")
+
+    def invalidar_cache_preview(self, tab=None):
+        """Invalida la cache de preview para una pestaña específica o todas."""
+        if tab:
+            self._preview_cache[tab] = None
+        else:
+            for k in self._preview_cache:
+                self._preview_cache[k] = None
 
     def imprimir(self):
         tab_activa = self.tabview.get()
