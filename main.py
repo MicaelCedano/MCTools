@@ -552,15 +552,7 @@ def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, lo
     return image
 
 # --- FUNCIÓN DE GENERACIÓN DE PDF (CÓDIGO DE BARRAS) ---
-def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion, path_logo_pil):
-    if not PDF_SAVE_ENABLED: return None
-    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_")
-    os.close(fd)
-    temporary_files_to_delete.append(temp_pdf_path)
-    
-    c = reportlab_canvas.Canvas(temp_pdf_path, pagesize=(LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch))
-    width, height = LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch
-    
+def _dibujar_etiqueta_barcode_canvas(c, width, height, modelo, numero_serie, path_logo_pil):
     # Márgenes
     margin_top = 0.20 * inch
     margin_sides = 0.15 * inch
@@ -609,7 +601,6 @@ def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion,
             current_y -= 0.1 * inch
             
             # Configurar parámetros optimizados para lectura
-            # quiet_zone mínimo recomendado: 6.5 módulos para Code128
             barcode_options = {
                 'module_height': 15.0,  # Altura adecuada para lectura
                 'module_width': 0.3,    # Ancho de módulo optimizado
@@ -660,7 +651,32 @@ def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion,
 
         except Exception as e:
             print(f"Error generando código de barras para PDF: {e}")
-            
+
+def _generar_etiqueta_barcode_pdf_temporal(modelo, numero_serie, especificacion, path_logo_pil):
+    if not PDF_SAVE_ENABLED: return None
+    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiqueta_")
+    os.close(fd)
+    temporary_files_to_delete.append(temp_pdf_path)
+    
+    width, height = LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch
+    c = reportlab_canvas.Canvas(temp_pdf_path, pagesize=(width, height))
+    _dibujar_etiqueta_barcode_canvas(c, width, height, modelo, numero_serie, path_logo_pil)
+    c.save()
+    return temp_pdf_path
+
+def _generar_lote_etiquetas_barcode_pdf_temporal(modelo, lista_seriales, path_logo_pil):
+    if not PDF_SAVE_ENABLED: return None
+    fd, temp_pdf_path = tempfile.mkstemp(suffix=".pdf", prefix="etiquetas_lote_")
+    os.close(fd)
+    temporary_files_to_delete.append(temp_pdf_path)
+    
+    width, height = LABEL_WIDTH_INCHES * inch, LABEL_HEIGHT_INCHES * inch
+    c = reportlab_canvas.Canvas(temp_pdf_path, pagesize=(width, height))
+    
+    for serial in lista_seriales:
+        _dibujar_etiqueta_barcode_canvas(c, width, height, modelo, serial, path_logo_pil)
+        c.showPage()
+        
     c.save()
     return temp_pdf_path
 
@@ -1165,6 +1181,116 @@ def extraer_imeis_y_modelo_de_archivo(filepath):
 
     return imeis, modelo_encontrado
 
+def extraer_seriales_y_modelo_de_archivo(filepath):
+    """
+    Lee un archivo .xlsx, .csv, .tsv o .txt y extrae todos los seriales/IMEIs alfanuméricos
+    y opcionalmente el modelo de dispositivo si se encuentra en la hoja o texto.
+    """
+    ext = os.path.splitext(filepath)[1].lower()
+    seriales = []
+    modelo_encontrado = None
+    # Permite seriales alfanuméricos de 8 a 20 caracteres que contengan al menos un número (para evitar palabras comunes)
+    serial_regex = re.compile(r'\b(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,20}\b')
+    lines_raw = []
+
+    if ext == '.xlsx':
+        try:
+            import zipfile, xml.etree.ElementTree as ET
+            with zipfile.ZipFile(filepath, 'r') as z:
+                shared_strings = []
+                if 'xl/sharedStrings.xml' in z.namelist():
+                    xml_content = z.read('xl/sharedStrings.xml')
+                    tree = ET.fromstring(xml_content)
+                    ns = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                    for si in tree.findall('.//ns:si', ns):
+                        t_nodes = si.findall('.//ns:t', ns)
+                        text = "".join([t.text for t in t_nodes if t.text])
+                        shared_strings.append(text)
+                
+                sheet_files = [f for f in z.namelist() if f.startswith('xl/worksheets/sheet')]
+                if sheet_files:
+                    xml_content = z.read(sheet_files[0])
+                    tree = ET.fromstring(xml_content)
+                    ns = {'ns': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+                    for row in tree.findall('.//ns:row', ns):
+                        fila = []
+                        for c in row.findall('.//ns:c', ns):
+                            t_attr = c.get('t', '')
+                            v_node = c.find('ns:v', ns)
+                            val = ""
+                            if v_node is not None and v_node.text is not None:
+                                val = v_node.text
+                                if t_attr == 's' and val.isdigit():
+                                    idx = int(val)
+                                    val = shared_strings[idx] if idx < len(shared_strings) else val
+                            else:
+                                is_node = c.find('ns:is', ns)
+                                if is_node is not None:
+                                    t_nodes = is_node.findall('.//ns:t', ns)
+                                    val = "".join([t.text for t in t_nodes if t.text])
+                            if val:
+                                fila.append(val)
+                        if fila:
+                            lines_raw.append(" ".join(fila))
+                            for cell in fila:
+                                cell_clean = cell.strip()
+                                if any(kw in cell_clean.lower() for kw in ["iphone", "ipad", "samsung", "xiaomi", "redmi", "pixel"]):
+                                    if not modelo_encontrado:
+                                        modelo_encontrado = cell_clean
+        except Exception as e:
+            print(f"Error al leer archivo Excel: {e}")
+
+    elif ext in ['.csv', '.tsv']:
+        try:
+            import csv
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                sample = f.read(2048)
+                f.seek(0)
+                delimiter = '\t' if ext == '.tsv' or '\t' in sample else (',' if ',' in sample else ';')
+                reader = csv.reader(f, delimiter=delimiter)
+                for row in reader:
+                    lines_raw.append(" ".join(row))
+                    for cell in row:
+                        cell_clean = cell.strip()
+                        if any(kw in cell_clean.lower() for kw in ["iphone", "ipad", "samsung", "xiaomi", "redmi", "pixel"]):
+                            if not modelo_encontrado:
+                                modelo_encontrado = cell_clean
+        except Exception as e:
+            print(f"Error al leer archivo CSV/TSV: {e}")
+    else:  # .txt o similar
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    cleaned = line.strip()
+                    lines_raw.append(cleaned)
+                    if any(kw in cleaned.lower() for kw in ["iphone", "ipad", "samsung", "xiaomi", "redmi", "pixel"]):
+                        if not modelo_encontrado:
+                            modelo_encontrado = cleaned
+        except Exception as e:
+            print(f"Error al leer archivo de texto: {e}")
+
+    # Extraer seriales usando regex
+    texto_completo = "\n".join(lines_raw)
+    encontrados = serial_regex.findall(texto_completo)
+
+    # Fallback si no se encuentran seriales
+    if not encontrados:
+        for line in lines_raw:
+            cleaned = line.strip()
+            # Si parece un serial (longitud 8-20, sin espacios)
+            if cleaned and 8 <= len(cleaned) <= 20 and ' ' not in cleaned:
+                encontrados.append(cleaned)
+
+    # Eliminar duplicados preservando el orden
+    seen = set()
+    for s in encontrados:
+        s_upper = s.upper()
+        if s_upper not in seen:
+            seen.add(s_upper)
+            seriales.append(s_upper)
+
+    return seriales, modelo_encontrado
+
 # --- Funciones Auxiliares para Actualización ---
 def limpiar_archivos_antiguos():
     """Elimina el archivo ejecutable antiguo (.old) si existe."""
@@ -1493,7 +1619,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.preview_ctk_image = None
         self._preview_update_job = None
         self.cached_logo_pil = None
-        self._preview_cache = {"barcode": None, "qr": None, "envio": None}  # Cache de previsualizaciones
+        self._preview_cache = {"barcode": None, "masivo": None, "qr": None, "envio": None}  # Cache de previsualizaciones
         
         # Configuración Inicial y de Icono (Ventana y Barra de Tareas)
         self.title(f"McTools v{VERSION}")
@@ -1644,6 +1770,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         self.tab_procesador = self.tabview.add("Procesador")
         self.tab_barcode = self.tabview.add("Código de Barras")
+        self.tab_masivo = self.tabview.add("Impresión Masiva")
         self.tab_qr = self.tabview.add("Código QR")
         self.tab_envio = self.tabview.add("Gestión de Destinatario")
         self.tab_config = self.tabview.add("Configuración")
@@ -1651,6 +1778,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         
         # Configure columns inside tabs
         self.tab_barcode.grid_columnconfigure(0, weight=1)
+        self.tab_masivo.grid_columnconfigure(0, weight=1)
         self.tab_qr.grid_columnconfigure(0, weight=1)
         self.tab_procesador.grid_columnconfigure(0, weight=1)
         self.tab_envio.grid_columnconfigure(0, weight=1)
@@ -1730,6 +1858,95 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         actions_bc.grid(row=1, column=0, sticky="ew", pady=(5, 5))
         actions_bc.grid_columnconfigure(0, weight=1)
         customtkinter.CTkButton(actions_bc, text="Imprimir", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=0, sticky="ew")
+
+
+        # ---------------- PESTAÑA IMPRESIÓN MASIVA ----------------
+        inputs_masivo = customtkinter.CTkFrame(self.tab_masivo, fg_color="transparent")
+        inputs_masivo.grid(row=0, column=0, sticky="ew")
+        inputs_masivo.grid_columnconfigure(0, weight=1)
+
+        # Tarjeta Modelo (Compartida)
+        modelo_card_masivo = customtkinter.CTkFrame(inputs_masivo, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        modelo_card_masivo.grid(row=0, column=0, padx=5, pady=(5, 12), sticky="ew")
+        modelo_card_masivo.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(modelo_card_masivo, text="Modelo", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, padx=12, pady=(6, 2), sticky="w")
+        modelo_entry_frame_masivo = customtkinter.CTkFrame(modelo_card_masivo, fg_color="transparent")
+        modelo_entry_frame_masivo.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        modelo_entry_frame_masivo.grid_columnconfigure(0, weight=1)
+        self.modelo_entry_masivo = customtkinter.CTkComboBox(
+            modelo_entry_frame_masivo,
+            variable=self.modelo_var,
+            values=obtener_lista_modelos(),
+            fg_color="#1E293B",
+            border_color="#475569",
+            text_color="#F8FAFC",
+            button_color="#334155",
+            button_hover_color="#475569",
+            dropdown_fg_color="#0F172A",
+            dropdown_text_color="#F8FAFC",
+            dropdown_hover_color="#334155",
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            dropdown_font=customtkinter.CTkFont(family="Inter", size=11),
+            height=32,
+            corner_radius=8
+        )
+        self.modelo_entry_masivo.grid(row=0, column=0, padx=(0, 8), sticky="ew")
+        customtkinter.CTkButton(modelo_entry_frame_masivo, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_modelo).grid(row=0, column=1, padx=0)
+
+        # Tarjeta Seriales/IMEIs (Caja de texto grande)
+        seriales_card = customtkinter.CTkFrame(inputs_masivo, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        seriales_card.grid(row=1, column=0, padx=5, pady=(0, 12), sticky="ew")
+        seriales_card.grid_columnconfigure(0, weight=1)
+        
+        seriales_label_frame = customtkinter.CTkFrame(seriales_card, fg_color="transparent")
+        seriales_label_frame.grid(row=0, column=0, padx=12, pady=(6, 2), sticky="ew")
+        seriales_label_frame.grid_columnconfigure(0, weight=1)
+        customtkinter.CTkLabel(seriales_label_frame, text="Seriales / IMEIs (uno por línea)", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+        self.masivo_count_label = customtkinter.CTkLabel(seriales_label_frame, text="0 Seriales", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#64748B")
+        self.masivo_count_label.grid(row=0, column=1, sticky="e")
+        
+        self.masivo_textbox = customtkinter.CTkTextbox(seriales_card, height=140, font=customtkinter.CTkFont(size=11), fg_color="#1E293B", border_color="#475569", border_width=1, text_color="gray", corner_radius=8)
+        self.masivo_textbox.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        self.masivo_placeholder_text = "Pegue aquí todos los seriales o IMEIs, uno por línea..."
+        self.masivo_textbox.insert("1.0", self.masivo_placeholder_text)
+        
+        limpiar_masivo_frame = customtkinter.CTkFrame(seriales_card, fg_color="transparent")
+        limpiar_masivo_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
+        limpiar_masivo_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        customtkinter.CTkButton(limpiar_masivo_frame, text="Limpiar Lista", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_seriales_masivos).grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        customtkinter.CTkButton(limpiar_masivo_frame, text="Pegar Lista", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_seriales_masivos).grid(row=0, column=1, padx=2, sticky="ew")
+        customtkinter.CTkButton(limpiar_masivo_frame, text="📥 Cargar Archivo", height=28, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.importar_archivo_seriales_masivos).grid(row=0, column=2, padx=(2, 0), sticky="ew")
+
+        # Tarjeta Logo (Compartida)
+        logo_card_masivo = customtkinter.CTkFrame(inputs_masivo, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        logo_card_masivo.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
+        logo_card_masivo.grid_columnconfigure(0, weight=1)
+
+        logo_header_masivo = customtkinter.CTkFrame(logo_card_masivo, fg_color="transparent")
+        logo_header_masivo.grid(row=0, column=0, padx=12, pady=8, sticky="ew")
+        logo_header_masivo.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(logo_header_masivo, text="Logo en Etiqueta", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), text_color="#94A3B8").grid(row=0, column=0, sticky="w")
+
+        self.logo_switch_masivo = customtkinter.CTkSwitch(
+            logo_header_masivo,
+            text="Activado" if self.logo_enabled_var.get() else "Desactivado",
+            variable=self.logo_enabled_var,
+            onvalue=True,
+            offvalue=False,
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#10B981" if self.logo_enabled_var.get() else "#64748B",
+            progress_color="#10B981",
+            command=self.al_cambiar_switch_logo
+        )
+        self.logo_switch_masivo.grid(row=0, column=1, sticky="e")
+
+        # Acciones Impresión Masiva (Imprimir y Guardar en PDF)
+        actions_masivo = customtkinter.CTkFrame(self.tab_masivo, fg_color="transparent")
+        actions_masivo.grid(row=1, column=0, sticky="ew", pady=(5, 5))
+        actions_masivo.grid_columnconfigure((0, 1), weight=1)
+        customtkinter.CTkButton(actions_masivo, text="🖨️ Imprimir Lote", fg_color="#06B6D4", hover_color="#0891B2", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.imprimir).grid(row=0, column=0, padx=(0, 4), sticky="ew")
+        customtkinter.CTkButton(actions_masivo, text="💾 Guardar PDF", fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"), height=40, corner_radius=10, command=self.guardar_pdf_masivo).grid(row=0, column=1, padx=(4, 0), sticky="ew")
 
 
         # ---------------- PESTAÑA CÓDIGO QR ----------------
@@ -2359,6 +2576,11 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.imeis_textbox.bind("<Button-1>", self.on_imeis_click)
         self.imeis_textbox.bind("<FocusIn>", self.on_imeis_focus_in)
         
+        # Binds para el cuadro de texto de Seriales Masivos
+        self.masivo_textbox.bind("<KeyRelease>", self.on_masivo_text_change)
+        self.masivo_textbox.bind("<Button-1>", self.on_masivo_click)
+        self.masivo_textbox.bind("<FocusIn>", self.on_masivo_focus_in)
+        
         # Binds para el cuadro de texto del Procesador
         self.proc_input_textbox.bind("<KeyRelease>", self.on_proc_text_change)
         self.proc_input_textbox.bind("<Button-1>", self.on_proc_click)
@@ -2380,7 +2602,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
     def schedule_preview_update(self, *args):
         if self._preview_update_job: self.after_cancel(self._preview_update_job)
         # Invalidar cache al cambiar inputs para regenerar preview
-        self._preview_cache = {"barcode": None, "qr": None, "envio": None}
+        self._preview_cache = {"barcode": None, "masivo": None, "qr": None, "envio": None}
         self._preview_update_job = self.after(50, self.force_preview_update)
 
     def force_preview_update(self):
@@ -2411,7 +2633,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                 self.cargar_y_cachear_logo()
             
             # Cache key según pestaña
-            cache_key = {"Código de Barras": "barcode", "Gestión de Destinatario": "envio", "Código QR": "qr"}.get(tab_activa)
+            cache_key = {"Código de Barras": "barcode", "Impresión Masiva": "masivo", "Gestión de Destinatario": "envio", "Código QR": "qr"}.get(tab_activa)
             
             if tab_activa == "Código de Barras":
                 pil_image = self._preview_cache.get("barcode")
@@ -2423,6 +2645,19 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                         self.cached_logo_pil
                     )
                     self._preview_cache["barcode"] = pil_image
+            elif tab_activa == "Impresión Masiva":
+                self.actualizar_contador_seriales_masivos()
+                pil_image = self._preview_cache.get("masivo")
+                if pil_image is None:
+                    seriales = self.obtener_seriales_masivos_del_texto()
+                    primer_serial = seriales[0] if seriales else "EJEMPLO12345"
+                    pil_image = _generar_etiqueta_barcode_pil_image(
+                        self.modelo_var.get().strip().upper(),
+                        primer_serial,
+                        "",
+                        self.cached_logo_pil
+                    )
+                    self._preview_cache["masivo"] = pil_image
             elif tab_activa == "Gestión de Destinatario":
                 pil_image = self._preview_cache.get("envio")
                 if pil_image is None:
@@ -2465,10 +2700,41 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         tab_activa = self.tabview.get()
         if tab_activa == "Código de Barras":
             self._procesar_generacion_barcode(imprimir_despues=True)
+        elif tab_activa == "Impresión Masiva":
+            self._procesar_generacion_masiva(imprimir_despues=True)
         elif tab_activa == "Gestión de Destinatario":
             self._procesar_generacion_2x4(imprimir_despues=True)
         else:
             self._procesar_generacion_qr(imprimir_despues=True)
+
+    def guardar_pdf_masivo(self):
+        self._procesar_generacion_masiva(guardar_permanente=True, imprimir_despues=False)
+
+    def _procesar_generacion_masiva(self, guardar_permanente=False, imprimir_despues=False):
+        if not PDF_SAVE_ENABLED:
+            messagebox.showerror("Función Deshabilitada", "La librería 'ReportLab' es necesaria para esta función.")
+            return
+        modelo = self.modelo_var.get().strip().upper()
+        seriales = self.obtener_seriales_masivos_del_texto()
+        seriales_validos = [s for s in seriales if s.strip()]
+        
+        if not modelo:
+            messagebox.showerror("Campo Obligatorio", "'Modelo' es un campo obligatorio.")
+            return
+        if not seriales_validos:
+            messagebox.showerror("Campo Obligatorio", "Debe ingresar al menos un Serial/IMEI.")
+            return
+            
+        path_logo_pdf = self.logo_path_var.get().strip() if (hasattr(self, 'logo_enabled_var') and self.logo_enabled_var.get()) else ""
+        temp_pdf_path = _generar_lote_etiquetas_barcode_pdf_temporal(
+            modelo,
+            seriales_validos,
+            path_logo_pdf
+        )
+        if not temp_pdf_path or not os.path.exists(temp_pdf_path):
+            messagebox.showerror("Error de Generación", "No se pudo crear el archivo PDF temporal.")
+            return
+        self._finalizar_generacion(temp_pdf_path, modelo, f"lote_{len(seriales_validos)}_se", guardar_permanente, imprimir_despues)
 
     def _procesar_generacion_barcode(self, guardar_permanente=False, imprimir_despues=False):
         if not PDF_SAVE_ENABLED:
@@ -2832,6 +3098,103 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.actualizar_contador_imeis()
         self.schedule_preview_update()
 
+    def obtener_seriales_masivos_del_texto(self):
+        """Extrae la lista de seriales del cuadro de texto masivo, eliminando líneas vacías y el placeholder."""
+        if not hasattr(self, 'masivo_textbox'):
+            return []
+        texto = self.masivo_textbox.get("1.0", tk.END).strip()
+        if texto == self.masivo_placeholder_text:
+            return []
+        return [line.strip().upper() for line in texto.split("\n") if line.strip()]
+
+    def actualizar_contador_seriales_masivos(self):
+        """Actualiza la etiqueta con la cantidad de seriales ingresados."""
+        cantidad = len(self.obtener_seriales_masivos_del_texto())
+        self.masivo_count_label.configure(text=f"{cantidad} Seriales")
+
+    def pegar_seriales_masivos(self):
+        """Pega el contenido del portapapeles en el cuadro de texto masivo."""
+        try:
+            contenido = self.clipboard_get().strip()
+            if contenido:
+                texto_actual = self.masivo_textbox.get("1.0", tk.END).strip()
+                if texto_actual == self.masivo_placeholder_text:
+                    self.masivo_textbox.delete("1.0", tk.END)
+                    self.masivo_textbox.configure(text_color="#F8FAFC")
+                
+                self.masivo_textbox.insert(tk.END, contenido + "\n")
+                self.actualizar_contador_seriales_masivos()
+                self.schedule_preview_update()
+        except tk.TclError:
+            messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
+
+    def limpiar_seriales_masivos(self):
+        """Limpia el cuadro de texto masivo y restablece el placeholder."""
+        self.masivo_textbox.delete("1.0", tk.END)
+        self.masivo_textbox.insert("1.0", self.masivo_placeholder_text)
+        self.masivo_textbox.configure(text_color="gray")
+        self.actualizar_contador_seriales_masivos()
+        self.schedule_preview_update()
+
+    def on_masivo_click(self, event):
+        """Limpia el placeholder si el usuario hace clic en el cuadro de texto."""
+        texto_actual = self.masivo_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.masivo_placeholder_text:
+            self.masivo_textbox.delete("1.0", tk.END)
+            self.masivo_textbox.configure(text_color="#F8FAFC")
+
+    def on_masivo_focus_in(self, event):
+        """Limpia el placeholder si el cuadro de texto recibe el foco."""
+        texto_actual = self.masivo_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.masivo_placeholder_text:
+            self.masivo_textbox.delete("1.0", tk.END)
+            self.masivo_textbox.configure(text_color="#F8FAFC")
+
+    def on_masivo_text_change(self, event):
+        """Se activa al cambiar el texto de los seriales masivos."""
+        self.actualizar_contador_seriales_masivos()
+        self.schedule_preview_update()
+
+    def importar_archivo_seriales_masivos(self):
+        """Permite al usuario seleccionar un archivo Excel/CSV/TXT e importa los seriales al cuadro de texto."""
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo de Seriales / IMEIs (Excel / CSV / TXT)",
+            filetypes=[
+                ("Archivos de Datos", "*.xlsx;*.csv;*.tsv;*.txt"),
+                ("Excel (*.xlsx)", "*.xlsx"),
+                ("CSV / TSV (*.csv, *.tsv)", "*.csv;*.tsv"),
+                ("Texto (*.txt)", "*.txt"),
+                ("Todos los archivos", "*.*")
+            ],
+            parent=self
+        )
+        if not filepath:
+            return
+
+        seriales, modelo_detectado = extraer_seriales_y_modelo_de_archivo(filepath)
+        if not seriales:
+            messagebox.showwarning("Sin Seriales", "No se encontraron números de serie o IMEIs válidos en el archivo seleccionado.", parent=self)
+            return
+
+        # Si el cuadro de texto tiene el placeholder, limpiarlo
+        texto_actual = self.masivo_textbox.get("1.0", tk.END).strip()
+        if texto_actual == self.masivo_placeholder_text:
+            self.masivo_textbox.delete("1.0", tk.END)
+            self.masivo_textbox.configure(text_color="#F8FAFC")
+
+        # Insertar seriales importados
+        self.masivo_textbox.insert(tk.END, "\n".join(seriales) + "\n")
+        
+        # Si se detectó un modelo y el campo Modelo está vacío, autocompletar
+        if modelo_detectado and not self.modelo_var.get().strip():
+            self.modelo_var.set(modelo_detectado)
+            self.aprender_modelo_actual()
+
+        self.actualizar_contador_seriales_masivos()
+        self.schedule_preview_update()
+
+        messagebox.showinfo("Importación Exitosa", f"Se importaron {len(seriales)} seriales correctamente desde:\n{os.path.basename(filepath)}", parent=self)
+
     # ---------------- MÉTODOS DEL PROCESADOR DE IMEIS ----------------
     def proc_extraer_imeis(self):
         """Extrae IMEIs de 15 dígitos únicos, aplicando filtro de posiciones pares si es requerido."""
@@ -3158,6 +3521,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             self.logo_switch_bc.configure(text=texto_estado, text_color=color_texto)
         if hasattr(self, 'logo_switch_qr'):
             self.logo_switch_qr.configure(text=texto_estado, text_color=color_texto)
+        if hasattr(self, 'logo_switch_masivo'):
+            self.logo_switch_masivo.configure(text=texto_estado, text_color=color_texto)
 
         self.cargar_y_cachear_logo()
         self.schedule_preview_update()
