@@ -127,7 +127,7 @@ def obtener_ruta_recurso(rel_path):
     return rel_path
 
 # --- Constantes ---
-VERSION = "3.8.2"
+VERSION = "3.9.1"
 REPO_OWNER = "MicaelCedano"
 REPO_NAME = "McTools"
 CONFIG_FILE_NAME = "etiqueta_config.json"
@@ -312,6 +312,28 @@ def guardar_fecha_enabled_config(enabled):
     config["fecha_enabled"] = bool(enabled)
     _write_config(config)
 
+def cargar_quitar_simbolos_tabletas_config():
+    """Carga la preferencia de eliminar apóstrofes/símbolos de seriales de tabletas (ej. TRG'220144785 -> TRG220144785)."""
+    config = _read_config()
+    return config.get("quitar_simbolos_tabletas", True)
+
+def guardar_quitar_simbolos_tabletas_config(enabled):
+    """Guarda la preferencia de eliminar símbolos de tabletas."""
+    config = _read_config()
+    config["quitar_simbolos_tabletas"] = bool(enabled)
+    _write_config(config)
+
+def sanitizar_serial_tableta(serial_o_imei: str) -> str:
+    """
+    Elimina apóstrofes y símbolos de seriales de tabletas.
+    Ejemplo: TRG'220144785 -> TRG220144785
+    Elimina apóstrofes rectos, tipográficos, tildes y comillas (' ’ ‘ ` ´ ").
+    """
+    if not serial_o_imei:
+        return ""
+    limpio = re.sub(r"['’‘`´\"]+", "", str(serial_o_imei))
+    return limpio.strip()
+
 def cargar_impresora_config():
     """Carga el nombre de la impresora guardada en la configuración."""
     config = _read_config()
@@ -453,6 +475,9 @@ def obtener_texto_fecha():
 
 def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, logo_pil_image):
     """Genera la etiqueta como una imagen PIL, replicando la lógica del PDF."""
+    if cargar_quitar_simbolos_tabletas_config() and numero_serie:
+        numero_serie = sanitizar_serial_tableta(numero_serie)
+
     DPI = 300
     LABEL_WIDTH_PX, LABEL_HEIGHT_PX = int(LABEL_WIDTH_INCHES * DPI), int(LABEL_HEIGHT_INCHES * DPI)
     
@@ -553,9 +578,13 @@ def _generar_etiqueta_barcode_pil_image(modelo, numero_serie, especificacion, lo
 
 # --- FUNCIÓN DE GENERACIÓN DE PDF (CÓDIGO DE BARRAS) ---
 def _dibujar_etiqueta_barcode_canvas(c, width, height, modelo, numero_serie, path_logo_pil):
+    if cargar_quitar_simbolos_tabletas_config() and numero_serie:
+        numero_serie = sanitizar_serial_tableta(numero_serie)
+
     # Márgenes
     margin_top = 0.20 * inch
     margin_sides = 0.15 * inch
+    margin_bottom = 0.20 * inch
     
     # Coordenada Y, se mueve de arriba hacia abajo
     current_y = height - margin_top
@@ -1189,8 +1218,9 @@ def extraer_seriales_y_modelo_de_archivo(filepath):
     ext = os.path.splitext(filepath)[1].lower()
     seriales = []
     modelo_encontrado = None
-    # Permite seriales alfanuméricos de 8 a 20 caracteres que contengan al menos un número (para evitar palabras comunes)
-    serial_regex = re.compile(r'\b(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,20}\b')
+    # Permite seriales alfanuméricos de 8 a 22 caracteres que contengan al menos un número (para evitar palabras comunes)
+    # Contempla apóstrofes para no cortar seriales de tabletas (ej: TRG'220144785)
+    serial_regex = re.compile(r"\b(?=[A-Za-z0-9']*[\d])[A-Za-z0-9']{8,22}\b")
     lines_raw = []
 
     if ext == '.xlsx':
@@ -1270,6 +1300,7 @@ def extraer_seriales_y_modelo_de_archivo(filepath):
             print(f"Error al leer archivo de texto: {e}")
 
     # Extraer seriales usando regex
+    quitar_simbolos = cargar_quitar_simbolos_tabletas_config()
     texto_completo = "\n".join(lines_raw)
     encontrados = serial_regex.findall(texto_completo)
 
@@ -1277,14 +1308,15 @@ def extraer_seriales_y_modelo_de_archivo(filepath):
     if not encontrados:
         for line in lines_raw:
             cleaned = line.strip()
-            # Si parece un serial (longitud 8-20, sin espacios)
-            if cleaned and 8 <= len(cleaned) <= 20 and ' ' not in cleaned:
+            # Si parece un serial (longitud 8-22, sin espacios)
+            if cleaned and 8 <= len(cleaned) <= 22 and ' ' not in cleaned:
                 encontrados.append(cleaned)
 
-    # Eliminar duplicados preservando el orden
+    # Eliminar duplicados preservando el orden y sanitizando símbolos si corresponde
     seen = set()
     for s in encontrados:
-        s_upper = s.upper()
+        s_proc = sanitizar_serial_tableta(s) if quitar_simbolos else s
+        s_upper = s_proc.upper()
         if s_upper not in seen:
             seen.add(s_upper)
             seriales.append(s_upper)
@@ -1681,6 +1713,7 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         logo_path_inicial = cargar_logo_config()
         self.logo_path_var = tk.StringVar(value=logo_path_inicial)
         self.logo_enabled_var = tk.BooleanVar(value=cargar_logo_enabled_config())
+        self.quitar_simbolos_var = tk.BooleanVar(value=cargar_quitar_simbolos_tabletas_config())
         
         # Variables específicas de Pestaña Barcode
         self.imei_var = tk.StringVar()
@@ -1829,6 +1862,20 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.imei_entry.grid(row=0, column=0, padx=(0, 8), sticky="ew")
         customtkinter.CTkButton(imei_entry_frame, text="Pegar", width=60, height=32, corner_radius=8, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=11, weight="bold"), command=self.pegar_imei).grid(row=0, column=1, padx=0)
 
+        # Opción Quitar Símbolo Tabletas
+        self.quitar_simbolos_switch_bc = customtkinter.CTkSwitch(
+            imei_card,
+            text="Quitar símbolo (') tabletas (ej. TRG')",
+            variable=self.quitar_simbolos_var,
+            onvalue=True,
+            offvalue=False,
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#10B981" if self.quitar_simbolos_var.get() else "#64748B",
+            progress_color="#10B981",
+            command=self.al_cambiar_quitar_simbolos
+        )
+        self.quitar_simbolos_switch_bc.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="w")
+
         # Tarjeta Logo (Compartida)
         logo_card_bc = customtkinter.CTkFrame(inputs_barcode, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
         logo_card_bc.grid(row=2, column=0, padx=5, pady=(0, 15), sticky="ew")
@@ -1905,17 +1952,32 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         self.masivo_count_label = customtkinter.CTkLabel(seriales_label_frame, text="0 Seriales", font=customtkinter.CTkFont(family="Inter", size=10), text_color="#64748B")
         self.masivo_count_label.grid(row=0, column=1, sticky="e")
         
-        self.masivo_textbox = customtkinter.CTkTextbox(seriales_card, height=140, font=customtkinter.CTkFont(size=11), fg_color="#1E293B", border_color="#475569", border_width=1, text_color="gray", corner_radius=8)
-        self.masivo_textbox.grid(row=1, column=0, padx=12, pady=(0, 10), sticky="ew")
+        self.masivo_textbox = customtkinter.CTkTextbox(seriales_card, height=130, font=customtkinter.CTkFont(size=11), fg_color="#1E293B", border_color="#475569", border_width=1, text_color="gray", corner_radius=8)
+        self.masivo_textbox.grid(row=1, column=0, padx=12, pady=(0, 6), sticky="ew")
         self.masivo_placeholder_text = "Pegue aquí todos los seriales o IMEIs, uno por línea..."
         self.masivo_textbox.insert("1.0", self.masivo_placeholder_text)
+
+        # Switch quitar símbolos de tabletas
+        self.quitar_simbolos_switch_masivo = customtkinter.CTkSwitch(
+            seriales_card,
+            text="Quitar símbolo (') tabletas (ej. TRG')",
+            variable=self.quitar_simbolos_var,
+            onvalue=True,
+            offvalue=False,
+            font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"),
+            text_color="#10B981" if self.quitar_simbolos_var.get() else "#64748B",
+            progress_color="#10B981",
+            command=self.al_cambiar_quitar_simbolos
+        )
+        self.quitar_simbolos_switch_masivo.grid(row=2, column=0, padx=12, pady=(0, 6), sticky="w")
         
         limpiar_masivo_frame = customtkinter.CTkFrame(seriales_card, fg_color="transparent")
-        limpiar_masivo_frame.grid(row=2, column=0, padx=12, pady=(0, 10), sticky="ew")
-        limpiar_masivo_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        customtkinter.CTkButton(limpiar_masivo_frame, text="Limpiar Lista", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_seriales_masivos).grid(row=0, column=0, padx=(0, 2), sticky="ew")
-        customtkinter.CTkButton(limpiar_masivo_frame, text="Pegar Lista", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_seriales_masivos).grid(row=0, column=1, padx=2, sticky="ew")
-        customtkinter.CTkButton(limpiar_masivo_frame, text="📥 Cargar Archivo", height=28, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.importar_archivo_seriales_masivos).grid(row=0, column=2, padx=(2, 0), sticky="ew")
+        limpiar_masivo_frame.grid(row=3, column=0, padx=12, pady=(0, 10), sticky="ew")
+        limpiar_masivo_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        customtkinter.CTkButton(limpiar_masivo_frame, text="Limpiar", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_seriales_masivos).grid(row=0, column=0, padx=(0, 2), sticky="ew")
+        customtkinter.CTkButton(limpiar_masivo_frame, text="Pegar", height=28, fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.pegar_seriales_masivos).grid(row=0, column=1, padx=2, sticky="ew")
+        customtkinter.CTkButton(limpiar_masivo_frame, text="🧹 Quitar (')", height=28, fg_color="#334155", hover_color="#475569", text_color="#38BDF8", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.limpiar_simbolos_masivos).grid(row=0, column=2, padx=2, sticky="ew")
+        customtkinter.CTkButton(limpiar_masivo_frame, text="📥 Archivo", height=28, fg_color="#10B981", hover_color="#059669", text_color="#FFFFFF", font=customtkinter.CTkFont(family="Inter", size=10, weight="bold"), command=self.importar_archivo_seriales_masivos).grid(row=0, column=3, padx=(2, 0), sticky="ew")
 
         # Tarjeta Logo (Compartida)
         logo_card_masivo = customtkinter.CTkFrame(inputs_masivo, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
@@ -2066,7 +2128,21 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             border_color="#475569",
             command=self.proc_extraer_imeis
         )
-        self.proc_omit_checkbox.grid(row=1, column=0, padx=10, pady=(0, 15), sticky="w")
+        self.proc_omit_checkbox.grid(row=1, column=0, padx=10, pady=(0, 6), sticky="w")
+
+        # Checkbox quitar símbolo (') de tabletas
+        self.proc_quitar_simbolos_checkbox = customtkinter.CTkCheckBox(
+            inputs_proc,
+            text="Quitar símbolo (') de tabletas (ej. TRG' ➔ TRG)",
+            variable=self.quitar_simbolos_var,
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            text_color="#94A3B8",
+            fg_color="#06B6D4",
+            hover_color="#0891B2",
+            border_color="#475569",
+            command=self.al_cambiar_quitar_simbolos
+        )
+        self.proc_quitar_simbolos_checkbox.grid(row=2, column=0, padx=10, pady=(0, 15), sticky="w")
 
         # Acciones Procesador (Izquierda)
         actions_proc = customtkinter.CTkFrame(self.tab_procesador, fg_color="transparent")
@@ -2255,6 +2331,21 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         customtkinter.CTkLabel(
             c3, 
             text="Especifica la ruta del archivo de imagen de tu logo (.png / .jpg). Luego puedes activarlo o desactivarlo fácilmente en las pestañas de Código de Barras y Código QR.",
+            font=customtkinter.CTkFont(family="Inter", size=11), text_color="#E2E8F0", justify="left", wraplength=420, anchor="w"
+        ).grid(row=1, column=0, padx=12, pady=(0, 10), sticky="w")
+
+        # Tarjeta 4: Seriales de Tabletas
+        c4 = customtkinter.CTkFrame(info_scroll, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
+        c4.grid(row=4, column=0, padx=5, pady=(0, 10), sticky="ew")
+        c4.grid_columnconfigure(0, weight=1)
+        
+        customtkinter.CTkLabel(
+            c4, text="📱 Seriales de Tabletas (Quitar Símbolo')", 
+            font=customtkinter.CTkFont(family="Inter", size=12, weight="bold"), text_color="#38BDF8", anchor="w"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+        customtkinter.CTkLabel(
+            c4, 
+            text="Elimina automáticamente los apóstrofes y comillas de los seriales de tabletas (ejemplo: convierte TRG'220144785 en TRG220144785) para generar códigos de barras válidos y etiquetas limpias sin signos molestos.",
             font=customtkinter.CTkFont(family="Inter", size=11), text_color="#E2E8F0", justify="left", wraplength=420, anchor="w"
         ).grid(row=1, column=0, padx=12, pady=(0, 10), sticky="w")
 
@@ -2563,6 +2654,31 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         )
         self.fecha_switch.grid(row=1, column=0, padx=12, pady=(4, 12), sticky="w")
 
+        # 5. Tarjeta Quitar Símbolos de Tabletas
+        tableta_card = customtkinter.CTkFrame(inputs_config, fg_color="#0F172A", border_width=1, border_color="#334155", corner_radius=12)
+        tableta_card.grid(row=4, column=0, sticky="ew", pady=(0, 10))
+        tableta_card.grid_columnconfigure(0, weight=1)
+
+        customtkinter.CTkLabel(
+            tableta_card,
+            text="📱 Seriales de Tabletas",
+            font=customtkinter.CTkFont(family="Inter", size=13, weight="bold"),
+            text_color="#06B6D4"
+        ).grid(row=0, column=0, padx=12, pady=(10, 4), sticky="w")
+
+        self.tableta_switch = customtkinter.CTkSwitch(
+            tableta_card,
+            text="Quitar símbolo (') tabletas (ej. TRG')",
+            variable=self.quitar_simbolos_var,
+            onvalue=True,
+            offvalue=False,
+            command=self.al_cambiar_quitar_simbolos,
+            font=customtkinter.CTkFont(family="Inter", size=11),
+            text_color="#10B981" if self.quitar_simbolos_var.get() else "#64748B",
+            progress_color="#10B981"
+        )
+        self.tableta_switch.grid(row=1, column=0, padx=12, pady=(4, 12), sticky="w")
+
     def _bind_events(self):
         # Eventos para actualizar la vista previa al escribir
         for var in [self.modelo_var, self.imei_var, self.envio_destinatario_var, self.envio_origen_var, self.envio_destino_var, self.envio_cantidad_var]:
@@ -2638,9 +2754,12 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             if tab_activa == "Código de Barras":
                 pil_image = self._preview_cache.get("barcode")
                 if pil_image is None:
+                    imei_val = self.imei_var.get().strip().upper()
+                    if hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get():
+                        imei_val = sanitizar_serial_tableta(imei_val)
                     pil_image = _generar_etiqueta_barcode_pil_image(
                         self.modelo_var.get().strip().upper(),
-                        self.imei_var.get().strip().upper(),
+                        imei_val,
                         "",
                         self.cached_logo_pil
                     )
@@ -2742,6 +2861,8 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             return
         modelo = self.modelo_var.get().strip().upper()
         imei = self.imei_var.get().strip().upper()
+        if hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get():
+            imei = sanitizar_serial_tableta(imei)
         if not modelo:
             messagebox.showerror("Campo Obligatorio", "El campo 'Modelo' es obligatorio.")
             return
@@ -3037,7 +3158,10 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         try:
             contenido = self.clipboard_get()
             if contenido:
-                self.imei_var.set(contenido.strip())
+                texto_limpio = contenido.strip()
+                if hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get():
+                    texto_limpio = sanitizar_serial_tableta(texto_limpio)
+                self.imei_var.set(texto_limpio)
         except tk.TclError:
             messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
 
@@ -3046,7 +3170,15 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         texto = self.imeis_textbox.get("1.0", tk.END).strip()
         if texto == self.placeholder_text:
             return []
-        return [line.strip() for line in texto.split("\n") if line.strip()]
+        quitar_simbolos = hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get()
+        imeis = []
+        for line in texto.split("\n"):
+            line_limpia = line.strip()
+            if line_limpia:
+                if quitar_simbolos:
+                    line_limpia = sanitizar_serial_tableta(line_limpia)
+                imeis.append(line_limpia)
+        return imeis
 
     def actualizar_contador_imeis(self):
         """Actualiza la etiqueta con la cantidad de IMEIs ingresados."""
@@ -3105,7 +3237,15 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
         texto = self.masivo_textbox.get("1.0", tk.END).strip()
         if texto == self.masivo_placeholder_text:
             return []
-        return [line.strip().upper() for line in texto.split("\n") if line.strip()]
+        quitar_simbolos = hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get()
+        seriales = []
+        for line in texto.split("\n"):
+            line_limpia = line.strip().upper()
+            if line_limpia:
+                if quitar_simbolos:
+                    line_limpia = sanitizar_serial_tableta(line_limpia).upper()
+                seriales.append(line_limpia)
+        return seriales
 
     def actualizar_contador_seriales_masivos(self):
         """Actualiza la etiqueta con la cantidad de seriales ingresados."""
@@ -3122,11 +3262,72 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
                     self.masivo_textbox.delete("1.0", tk.END)
                     self.masivo_textbox.configure(text_color="#F8FAFC")
                 
+                # Si quitar símbolos de tabletas está activado, sanitizar cada línea pegada
+                if hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get():
+                    lineas = [sanitizar_serial_tableta(l).upper() for l in contenido.split("\n") if l.strip()]
+                    contenido = "\n".join(lineas)
+
                 self.masivo_textbox.insert(tk.END, contenido + "\n")
                 self.actualizar_contador_seriales_masivos()
                 self.schedule_preview_update()
         except tk.TclError:
             messagebox.showwarning("Portapapeles Vacío", "No hay contenido en el portapapeles para pegar.")
+
+    def limpiar_simbolos_masivos(self, silencioso=False):
+        """Limpia los apóstrofes y símbolos en todos los seriales del cuadro masivo (ej. TRG'220144785 -> TRG220144785)."""
+        if not hasattr(self, 'masivo_textbox'):
+            return
+        texto = self.masivo_textbox.get("1.0", tk.END).strip()
+        if not texto or texto == self.masivo_placeholder_text:
+            if not silencioso:
+                messagebox.showinfo("Sin Datos", "No hay seriales para procesar.", parent=self)
+            return
+            
+        lineas = texto.split("\n")
+        modificados = 0
+        nuevas_lineas = []
+        for line in lineas:
+            line_strip = line.strip()
+            if not line_strip:
+                continue
+            line_limpia = sanitizar_serial_tableta(line_strip).upper()
+            if line_limpia != line_strip:
+                modificados += 1
+            nuevas_lineas.append(line_limpia)
+            
+        self.masivo_textbox.delete("1.0", tk.END)
+        self.masivo_textbox.insert("1.0", "\n".join(nuevas_lineas) + "\n")
+        self.masivo_textbox.configure(text_color="#F8FAFC")
+        self.actualizar_contador_seriales_masivos()
+        self.schedule_preview_update()
+        
+        if not silencioso:
+            messagebox.showinfo("Símbolos Eliminados", f"Se limpiaron los símbolos en {modificados} seriales.\n(Ejemplo: TRG'220144785 ➔ TRG220144785)", parent=self)
+
+    def al_cambiar_quitar_simbolos(self):
+        """Sincroniza y guarda el estado del switch de quitar símbolos de tabletas entre pestañas."""
+        val = self.quitar_simbolos_var.get()
+        guardar_quitar_simbolos_tabletas_config(val)
+        
+        color_texto = "#10B981" if val else "#64748B"
+        if hasattr(self, 'quitar_simbolos_switch_bc'):
+            self.quitar_simbolos_switch_bc.configure(text_color=color_texto)
+        if hasattr(self, 'quitar_simbolos_switch_masivo'):
+            self.quitar_simbolos_switch_masivo.configure(text_color=color_texto)
+        if hasattr(self, 'tableta_switch'):
+            self.tableta_switch.configure(text_color=color_texto)
+            
+        # Si se activó, limpiar inmediatamente cualquier serial presente
+        if val:
+            if hasattr(self, 'imei_var'):
+                actual = self.imei_var.get()
+                if actual and any(c in actual for c in "'’‘`´\""):
+                    self.imei_var.set(sanitizar_serial_tableta(actual))
+            if hasattr(self, 'masivo_textbox'):
+                self.limpiar_simbolos_masivos(silencioso=True)
+                
+        self.invalidar_cache_preview()
+        self.schedule_preview_update()
 
     def limpiar_seriales_masivos(self):
         """Limpia el cuadro de texto masivo y restablece el placeholder."""
@@ -3208,18 +3409,26 @@ class AppGeneradorEtiquetas(customtkinter.CTk):
             return
 
         # Encontrar todos los IMEIs de 15 dígitos con expresión regular
+        quitar_simbolos = hasattr(self, 'quitar_simbolos_var') and self.quitar_simbolos_var.get()
+        texto_limpio_simbolos = sanitizar_serial_tableta(texto_crudo) if quitar_simbolos else texto_crudo
+
         imei_pattern = r'\b\d{15}\b'
-        todos_los_imeis = re.findall(imei_pattern, texto_crudo)
+        todos_los_imeis = re.findall(imei_pattern, texto_limpio_simbolos)
 
         # Fallback: si no encontró nada, sanitizar tokens no numéricos
         # Cubre IMEIs con espacios o guiones (e.g. "12345 67890 12345")
         if not todos_los_imeis:
-            for line in texto_crudo.splitlines():
+            for line in texto_limpio_simbolos.splitlines():
                 tokens = line.split()
                 for token in tokens:
                     cleaned = "".join(c for c in token if c.isdigit())
                     if len(cleaned) == 15:
                         todos_los_imeis.append(cleaned)
+
+        # Si aún no encontró y quitar_simbolos está activo, buscar seriales alfanuméricos de tabletas (ej. TRG220144785)
+        if not todos_los_imeis and quitar_simbolos:
+            serial_pattern = r'\b(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,22}\b'
+            todos_los_imeis = [s.upper() for s in re.findall(serial_pattern, texto_limpio_simbolos)]
 
         # Aplicar filtro de posiciones pares (omitir impares en base 1-indexada, es decir indices 1, 3, 5 en 0-indexada)
         imeis_filtrados = []
